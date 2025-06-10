@@ -53,11 +53,10 @@ if not st.session_state.media_urls and st.session_state.has_more:
 if st.session_state.has_more:
     if st.button("次の60件を読み込む"):
         load_more()
-        st.experimental_rerun()
+        # st.experimental_rerun() は不要です。Streamlit が自動で再実行してくれます。
 
 try:
     if st.session_state.media_urls:
-        # HTMLでスワイプ操作可能なビューワーを埋め込む
         imgs_html = "\n".join(
             f'<img src="{url}" class="media" style="display:none; width:100%; height:auto;">'
             for url in st.session_state.media_urls
@@ -72,11 +71,9 @@ try:
           let idx = 0;
           imgs[idx].style.display = "block";
           let startX = 0;
-
           container.addEventListener("touchstart", e => {{
             startX = e.changedTouches[0].screenX;
           }});
-
           container.addEventListener("touchend", e => {{
             const diff = e.changedTouches[0].screenX - startX;
             if (Math.abs(diff) > 50) {{
@@ -87,16 +84,8 @@ try:
           }});
         </script>
         """
-        # 高さはお好みで調整
         components.html(html_code, height=500, scrolling=False)
-
     else:
         st.info("画像または動画を含むノートが見つかりませんでした。")
-
 except Exception as e:
     st.error(f"エラーが発生しました：{e}")
-
-
-
-
-
