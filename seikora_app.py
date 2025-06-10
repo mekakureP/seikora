@@ -21,35 +21,35 @@ if "media_urls" not in st.session_state:
 
 @st.cache_data(ttl=60)
 def fetch_batch(token: str, limit: int, until_id: str | None = None):
-    """Misskey ローカルTLをバッチで取得"""
+    """Misskey ローカルTLをバッチで取得し、リノートを除外して返す"""
     payload = {"i": token, "limit": limit, "withFiles": True}
     if until_id:
         payload["untilId"] = until_id
     res = requests.post(API_URL, json=payload)
     res.raise_for_status()
-    return res.json()
+    notes = res.json()
+    # 取得した中から renote があるものを全て除外
+    return [note for note in notes if note.get("renote") is None]
 
 def load_more():
-    """次のバッチを読み込んで media_urls に追加（リノート除外）"""
+    """次のバッチを読み込んで media_urls に追加"""
     notes = fetch_batch(API_TOKEN, BATCH_SIZE, st.session_state.until_id)
     if not notes:
         st.session_state.has_more = False
         return
     st.session_state.until_id = notes[-1]["id"]
     for note in notes:
-        if note.get("renote") is not None:
-            continue
         for f in note.get("files", []):
             if f["type"].startswith(("image", "video")):
                 st.session_state.media_urls.append(f["url"])
     if len(notes) < BATCH_SIZE:
         st.session_state.has_more = False
 
-# 最初のバッチ読み込み
+# 最初の読み込み
 if not st.session_state.media_urls and st.session_state.has_more:
     load_more()
 
-# 「次の60件を読み込む」ボタン
+# 次の60件読み込みボタン
 if st.session_state.has_more:
     if st.button("次の60件を読み込む"):
         load_more()
@@ -58,9 +58,9 @@ if st.session_state.has_more:
 if not st.session_state.media_urls:
     st.info("ローカルTLに画像・動画を含むノートが見つかりませんでした。")
 else:
-    # HTML/JS ビューワーの組み立て
+    # HTML/JS ビューワー組み立て
     imgs_html = "\n".join(
-        # .gif は <img> タグでアニメ表示
+        # GIF は <img> でアニメ表示、それ以外は <video> タグで再生
         f'<img src="{url}" class="media" style="display:none;">'
         if url.lower().endswith((".jpg", ".jpeg", ".png", ".gif"))
         else f'<video src="{url}" class="media" style="display:none;" controls autoplay loop muted></video>'
@@ -69,19 +69,15 @@ else:
 
     html_code = f"""
     <style>
-      /* 全画面黒背景コンテナ */
       #viewer {{
         position: fixed; top: 0; left: 0;
-        width: 100vw; height: 100vh;
-        background: #000;
+        width: 100vw; height: 100vh; background: #000;
         display: flex; align-items: center; justify-content: center;
         touch-action: pan-y; overflow: hidden; margin: 0; padding: 0;
       }}
-      /* メディアを画面にフィット */
       .media {{
         max-width: 100%; max-height: 100%; object-fit: contain;
       }}
-      /* フルスクリーン切替ボタン */
       #fs-btn {{
         position: fixed; bottom: 20px; right: 20px;
         z-index: 999; padding: 10px 15px;
@@ -99,9 +95,8 @@ else:
       let idx = 0;
       medias[idx].style.display = "block";
 
-      // スワイプ検知
       let startX = 0;
-      container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].screenX; }});
+      container.addEventListener("touchstart", e => startX = e.changedTouches[0].screenX);
       container.addEventListener("touchend", e => {{
         const diff = e.changedTouches[0].screenX - startX;
         if (Math.abs(diff) > 50) {{
@@ -111,18 +106,17 @@ else:
         }}
       }});
 
-      // フルスクリーン切替
       document.getElementById("fs-btn").addEventListener("click", () => {{
         if (!document.fullscreenElement) {{
-          container.requestFullscreen();
+          container.requestFullscreen?.() ||
+          container.webkitEnterFullscreen?.(); 
         }} else {{
-          document.exitFullscreen();
+          document.exitFullscreen?.() ||
+          document.webkitExitFullscreen?.();
         }}
       }});
     </script>
     """
-
-    # コンポーネント埋め込み
     components.html(html_code, height=800, scrolling=False)
 
 
