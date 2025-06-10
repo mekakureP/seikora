@@ -11,7 +11,7 @@ API_URL          = f"https://{MISSKEY_INSTANCE}/api/notes/local-timeline"
 BATCH_SIZE       = 60
 # ────────────────────────────────
 
-st.title("📸 Misskey ローカルTL メディアビューア（自動バッチ＆スワイプ）")
+st.title("Misskey")
 
 @st.cache_data(ttl=60)
 def fetch_batch(token: str, limit: int, until_id: str | None = None):
