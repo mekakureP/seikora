@@ -61,11 +61,12 @@ let idx = 0;
 function makeElement(item) {{
   if (item.type.startsWith("video")) {{
     const v = document.createElement("video");
-    v.src      = item.url;
-    v.controls = true;
-    v.autoplay = true;
-    v.loop     = true;
-    v.muted    = true;
+    v.src        = item.url;
+    v.controls   = true;
+    v.autoplay   = true;
+    v.loop       = true;
+    v.muted      = true;
+    v.playsInline = true;  // iOS等でインライン自動再生を可能に
     v.style.maxWidth  = "100%";
     v.style.maxHeight = "100%";
     v.style.objectFit = "contain";
@@ -116,7 +117,7 @@ async function loadMore() {{
       }}
     }});
   }});
-  renderAll();
+  renderAll();  // 追加後も idx を保持
 }}
 
 // 初期描画
@@ -140,3 +141,4 @@ container.addEventListener("touchend", async e => {{
 """
 
 components.html(html_code, height=800, scrolling=False)
+
