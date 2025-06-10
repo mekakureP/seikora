@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import json
 import streamlit.components.v1 as components
 
 # ────────────────────────────────
@@ -11,10 +10,31 @@ API_URL          = f"https://{MISSKEY_INSTANCE}/api/notes/local-timeline"
 BATCH_SIZE       = 60
 # ────────────────────────────────
 
-st.title("📸 Misskey ローカルTL メディアビューア（インフィニットスワイプ）")
+st.title("📸 Misskey ローカルTL メディアビューア（seikora.one）")
+
+# ── 縦スクロール無効化トグル ─────────────────
+disable_scroll = st.checkbox("縦スクロールを無効化する", value=False)
+if disable_scroll:
+    st.markdown(
+        """
+        <style>
+          html, body, .block-container {
+            overflow-y: hidden !important;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# ── セッションステート初期化 ─────────────────
+if "media_urls" not in st.session_state:
+    st.session_state.media_urls = []
+    st.session_state.until_id    = None
+    st.session_state.has_more    = True
 
 @st.cache_data(ttl=60)
 def fetch_batch(token, limit, until_id=None):
+    """Misskey ローカルTLをバッチで取得"""
     payload = {"i": token, "limit": limit, "withFiles": True}
     if until_id:
         payload["untilId"] = until_id
@@ -22,123 +42,62 @@ def fetch_batch(token, limit, until_id=None):
     res.raise_for_status()
     return res.json()
 
-# 最初の60件を取得
-initial_notes = fetch_batch(API_TOKEN, BATCH_SIZE)
-initial_media = []
-for note in initial_notes:
-    for f in note.get("files", []):
-        if f["type"].startswith(("image", "video")):
-            initial_media.append({"url": f["url"], "type": f["type"]})
-# 次バッチ取得用 ID
-initial_until_id = initial_notes[-1]["id"] if initial_notes else None
+def load_more():
+    """次のバッチを読み込んで media_urls に追加"""
+    notes = fetch_batch(API_TOKEN, BATCH_SIZE, st.session_state.until_id)
+    if not notes:
+        st.session_state.has_more = False
+        return
+    st.session_state.until_id = notes[-1]["id"]
+    for note in notes:
+        for f in note.get("files", []):
+            if f["type"].startswith(("image", "video")):
+                st.session_state.media_urls.append(f["url"])
+    if len(notes) < BATCH_SIZE:
+        st.session_state.has_more = False
 
-# HTML/JS で全バッチをクライアントサイドで取得・スワイプ
-html_code = f"""
-<div id="viewer" style="
-    position: fixed; top:0; left:0;
-    width:100vw; height:100vh;
-    background:#000;
-    display:flex; align-items:center; justify-content:center;
-    overflow:hidden; touch-action: pan-y;
-">
-</div>
+# 初回ロード
+if not st.session_state.media_urls and st.session_state.has_more:
+    load_more()
 
-<script>
-const apiUrl   = "{API_URL}";
-const token    = "{API_TOKEN}";
-const batchSize= {BATCH_SIZE};
-let untilId    = "{initial_until_id}";
-let medias     = {json.dumps(initial_media)};
+# ── 「次の60件を読み込む」ボタン ─────────────────
+if st.session_state.has_more:
+    if st.button("次の60件を読み込む"):
+        load_more()
 
-const container = document.getElementById("viewer");
-let idx = 0;
+# ── メディア表示 ─────────────────
+if not st.session_state.media_urls:
+    st.info("画像または動画を含むノートが見つかりませんでした。")
+else:
+    # ベーススクリプトの HTML+JS 部分（安定版）をそのまま使用
+    imgs_html = "\n".join(
+        f'<img src="{url}" class="media" style="display:none; width:100%; height:auto;">'
+        for url in st.session_state.media_urls
+    )
+    html_code = f"""
+    <div id="viewer" style="touch-action: pan-y; width:100%; height:100vh; margin:0; padding:0;">
+      {imgs_html}
+    </div>
+    <script>
+      const container = document.getElementById("viewer");
+      const imgs = container.querySelectorAll(".media");
+      let idx = 0;
+      imgs[idx].style.display = "block";
+      let startX = 0;
 
-// メディア要素を作って返す
-function makeElement(item) {{
-  if (item.type.startsWith("video")) {{
-    const v = document.createElement("video");
-    v.src = item.url;
-    v.controls = true;
-    v.autoplay = true;
-    v.loop = true;
-    v.muted = true;
-    v.style.maxWidth = "100%";
-    v.style.maxHeight = "100%";
-    v.style.objectFit = "contain";
-    v.style.display = "none";
-    return v;
-  }} else {{
-    const img = document.createElement("img");
-    img.src = item.url;
-    img.style.maxWidth = "100%";
-    img.style.maxHeight = "100%";
-    img.style.objectFit = "contain";
-    img.style.display = "none";
-    return img;
-  }}
-}}
+      container.addEventListener("touchstart", e => {{
+        startX = e.changedTouches[0].screenX;
+      }});
 
-// viewer に全メディア要素を追加
-function renderAll() {{
-  container.innerHTML = "";
-  medias.forEach(item => {{
-    const el = makeElement(item);
-    container.appendChild(el);
-  }});
-}}
+      container.addEventListener("touchend", e => {{
+        const diff = e.changedTouches[0].screenX - startX;
+        if (Math.abs(diff) > 50) {{
+          imgs[idx].style.display = "none";
+          idx = (idx + (diff < 0 ? 1 : -1) + imgs.length) % imgs.length;
+          imgs[idx].style.display = "block";
+        }}
+      }});
+    </script>
+    """
+    components.html(html_code, height=800, scrolling=False)
 
-// 現在の idx を表示
-function showIdx() {{
-  const children = container.children;
-  for (let i = 0; i < children.length; i++) {{
-    children[i].style.display = i === idx ? "block" : "none";
-  }}
-}}
-
-// 次バッチを取得して medias に追加
-async function loadMore() {{
-  const payload = {{ i: token, limit: batchSize }};
-  if (untilId) payload.untilId = untilId;
-  const res = await fetch(apiUrl, {{
-    method: "POST",
-    headers: {{ "Content-Type": "application/json" }},
-    body: JSON.stringify(payload)
-  }});
-  const notes = await res.json();
-  if (notes.length === 0) return;  // もう無ければ終了
-  untilId = notes[notes.length - 1].id;
-  notes.forEach(note => {{
-    note.files.forEach(f => {{
-      if (f.type.startsWith("image") || f.type.startsWith("video")) {{
-        medias.push({{ url: f.url, type: f.type }});
-      }}
-    }});
-  }});
-  renderAll();
-}}
-
-// 初期描画
-renderAll();
-showIdx();
-
-// タッチスワイプ検知
-let startX = 0;
-container.addEventListener("touchstart", e => {{
-  startX = e.changedTouches[0].screenX;
-}});
-container.addEventListener("touchend", async e => {{
-  const diff = e.changedTouches[0].screenX - startX;
-  if (Math.abs(diff) > 50) {{
-    const prevIdx = idx;
-    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
-    showIdx();
-    // 最後の要素に到達したら次バッチ読込
-    if (idx === medias.length - 1) {{
-      await loadMore();
-    }}
-  }}
-}});
-</script>
-"""
-
-components.html(html_code, height=800, scrolling=False)
