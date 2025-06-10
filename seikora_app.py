@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import streamlit.components.v1 as components
 
 MISSKEY_INSTANCE = "seikora.one"
 API_TOKEN = st.secrets["MISSKEY_API_TOKEN"]
@@ -9,31 +10,57 @@ st.title("📸 Misskey ローカルTL メディアビューア（seikora.one）"
 
 @st.cache_data(ttl=60)
 def fetch_local_timeline(token, limit=30):
-    headers = {"Content-Type": "application/json"}
-    payload = {"i": token, "limit": limit, "withFiles": True}
-    res = requests.post(API_URL, json=payload, headers=headers)
+    res = requests.post(API_URL, json={"i": token, "limit": limit, "withFiles": True})
     res.raise_for_status()
     return res.json()
 
 try:
     notes = fetch_local_timeline(API_TOKEN)
-    media_urls = []
-    for note in notes:
-        for f in note.get("files", []):
-            if f["type"].startswith(("image", "video")):
-                media_urls.append(f["url"])
+    media_urls = [
+        f["url"]
+        for note in notes
+        for f in note.get("files", [])
+        if f["type"].startswith(("image", "video"))
+    ]
 
     if media_urls:
-        idx = st.slider("メディア選択", 0, len(media_urls)-1, 0)
-        current_url = media_urls[idx]
+        # HTMLでスワイプ操作可能なビューワーを埋め込む
+        imgs_html = "\n".join(
+            f'<img src="{url}" class="media" style="display:none; width:100%; height:auto;">'
+            for url in media_urls
+        )
+        html_code = f"""
+        <div id="viewer" style="touch-action: pan-y;">
+          {imgs_html}
+        </div>
+        <script>
+          const container = document.getElementById("viewer");
+          const imgs = container.querySelectorAll(".media");
+          let idx = 0;
+          imgs[idx].style.display = "block";
+          let startX = 0;
 
-        if current_url.endswith((".mp4", ".webm")):
-            st.video(current_url)
-        else:
-            st.image(current_url, use_container_width=True)
+          container.addEventListener("touchstart", e => {{
+            startX = e.changedTouches[0].screenX;
+          }});
+
+          container.addEventListener("touchend", e => {{
+            const diff = e.changedTouches[0].screenX - startX;
+            if (Math.abs(diff) > 50) {{
+              imgs[idx].style.display = "none";
+              idx = (idx + (diff < 0 ? 1 : -1) + imgs.length) % imgs.length;
+              imgs[idx].style.display = "block";
+            }}
+          }});
+        </script>
+        """
+        # 高さはお好みで調整
+        components.html(html_code, height=500, scrolling=False)
+
     else:
         st.info("画像または動画が含まれるノートが見つかりませんでした。")
 
 except Exception as e:
     st.error(f"エラーが発生しました：{e}")
+
 
