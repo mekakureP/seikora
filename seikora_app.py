@@ -1,6 +1,6 @@
-import json
 import streamlit as st
 import requests
+import json
 import streamlit.components.v1 as components
 
 # ────────────────────────────────
@@ -9,24 +9,13 @@ MISSKEY_INSTANCE = "seikora.one"
 API_TOKEN        = st.secrets["MISSKEY_API_TOKEN"]
 API_URL          = f"https://{MISSKEY_INSTANCE}/api/notes/local-timeline"
 BATCH_SIZE       = 60
-API_TOKEN = st.secrets["MISSKEY_API_TOKEN"]
-API_URL = f"https://{MISSKEY_INSTANCE}/api/notes/local-timeline"
-BATCH_SIZE = 60
 # ────────────────────────────────
 
-st.title("📸 Misskey ローカルTL メディアビューア（seikora.one）")
-
-# ── セッションステート初期化 ─────────────────
-if "media_urls" not in st.session_state:
-    st.session_state.media_urls = []
-    st.session_state.until_id    = None
-    st.session_state.has_more    = True
+st.title("📸 Misskey ローカルTL メディアビューア（自動バッチ＆スワイプ）")
 
 @st.cache_data(ttl=60)
-def fetch_batch(token, limit, until_id=None):
-    """ローカルTLをバッチで取得"""
 def fetch_batch(token: str, limit: int, until_id: str | None = None):
-    """ローカルTLをバッチ取得"""
+    """Misskey ローカルTLをバッチ取得"""
     payload = {"i": token, "limit": limit, "withFiles": True}
     if until_id:
         payload["untilId"] = until_id
@@ -34,163 +23,120 @@ def fetch_batch(token: str, limit: int, until_id: str | None = None):
     res.raise_for_status()
     return res.json()
 
-def load_more():
-    """次のバッチを読み込んで media_urls に追加"""
-    notes = fetch_batch(API_TOKEN, BATCH_SIZE, st.session_state.until_id)
-try:
-    notes = fetch_batch(API_TOKEN, BATCH_SIZE)
-    if not notes:
-        st.session_state.has_more = False
-        return
-    # until_id を更新（最終ノートのID）
-    st.session_state.until_id = notes[-1]["id"]
-    # メディアURLを積み増し
-    for note in notes:
-        for f in note.get("files", []):
-            if f["type"].startswith(("image", "video")):
-                st.session_state.media_urls.append(f["url"])
-    # 取得件数が少なければ読み込み終了
-    if len(notes) < BATCH_SIZE:
-        st.session_state.has_more = False
+# Python 側で最初の 60 件を取得
+initial_notes = fetch_batch(API_TOKEN, BATCH_SIZE)
+initial_media = [
+    {"url": f["url"], "type": f["type"]}
+    for note in initial_notes
+    for f in note.get("files", [])
+    if f["type"].startswith(("image", "video"))
+]
+initial_until_id = initial_notes[-1]["id"] if initial_notes else None
 
-# 初回ロード
-if not st.session_state.media_urls and st.session_state.has_more:
-    load_more()
-        st.info("画像または動画を含むノートが見つかりませんでした。")
-    else:
-        until_id = notes[-1]["id"]
-        medias: list[dict[str, str]] = []
-        for note in notes:
-            for f in note.get("files", []):
-                if f["type"].startswith(("image", "video")):
-                    medias.append({"url": f["url"], "type": f["type"]})
-        init_data = json.dumps({
-            "medias": medias,
-            "untilId": until_id,
-            "token": API_TOKEN,
-        })
-        html_code = f"""
-<div id='viewer' style='touch-action: pan-y;'>
-  <div id='content'></div>
-</div>
+# JSON にエンコードして JS へ渡す準備
+media_json  = json.dumps(initial_media)
+until_id_js = "null" if initial_until_id is None else f'"{initial_until_id}"'
+
+# HTML + JavaScript
+html_code = f"""
+<div id="viewer" style="
+    position: fixed; top:0; left:0;
+    width:100vw; height:100vh;
+    background:#000;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden; touch-action: pan-y;
+"></div>
+
 <script>
-const API_URL = "{API_URL}";
-let data = {init_data};
-let medias = data.medias;
-let untilId = data.untilId;
-const token = data.token;
+const apiUrl    = "{API_URL}";
+const token     = "{API_TOKEN}";
+const batchSize = {BATCH_SIZE};
+let untilId     = {until_id_js};
+let medias      = {media_json};
+
+const container = document.getElementById("viewer");
 let idx = 0;
-const content = document.getElementById('content');
 
-# ── 「次の60件を読み込む」ボタン ─────────────────
-if st.session_state.has_more:
-    if st.button("次の60件を読み込む"):
-        load_more()
-function createEl(m) {{
-  let el;
-  if (m.type.startsWith('video')) {{
-    el = document.createElement('video');
-    el.src = m.url;
-    el.controls = true;
-    el.autoplay = true;
-    el.loop = true;
-    el.muted = true;
+// メディア要素作成ヘルパー
+function makeElement(item) {{
+  if (item.type.startsWith("video")) {{
+    const v = document.createElement("video");
+    v.src      = item.url;
+    v.controls = true;
+    v.autoplay = true;
+    v.loop     = true;
+    v.muted    = true;
+    v.style.maxWidth  = "100%";
+    v.style.maxHeight = "100%";
+    v.style.objectFit = "contain";
+    v.style.display   = "none";
+    return v;
   }} else {{
-    el = document.createElement('img');
-    el.src = m.url;
-  }}
-  el.style.width = '100%';
-  el.style.height = 'auto';
-  return el;
-}}
-
-# ── メディア表示 ─────────────────
-if st.session_state.media_urls:
-    imgs_html = "\n".join(
-        f'<img src="{url}" class="media" style="display:none; width:100%; height:auto;">'
-        for url in st.session_state.media_urls
-    )
-    html_code = f"""
-    <div id="viewer" style="touch-action: pan-y;">
-      {imgs_html}
-    </div>
-    <script>
-      const container = document.getElementById("viewer");
-      const imgs = container.querySelectorAll(".media");
-      let idx = 0;
-      imgs[idx].style.display = "block";
-      let startX = 0;
-function render() {{
-  content.innerHTML = '';
-  if (medias[idx]) {{
-    content.appendChild(createEl(medias[idx]));
+    const img = document.createElement("img");
+    img.src             = item.url;
+    img.style.maxWidth  = "100%";
+    img.style.maxHeight = "100%";
+    img.style.objectFit = "contain";
+    img.style.display   = "none";
+    return img;
   }}
 }}
 
-      container.addEventListener("touchstart", e => {{
-        startX = e.changedTouches[0].screenX;
-      }});
+// viewer に全メディア要素を追加
+function renderAll() {{
+  container.innerHTML = "";
+  medias.forEach(item => {{
+    container.appendChild(makeElement(item));
+  }});
+}}
 
-      container.addEventListener("touchend", e => {{
-        const diff = e.changedTouches[0].screenX - startX;
-        if (Math.abs(diff) > 50) {{
-          imgs[idx].style.display = "none";
-          idx = (idx + (diff < 0 ? 1 : -1) + imgs.length) % imgs.length;
-          imgs[idx].style.display = "block";
-async function fetchMore() {{
-  const res = await fetch(API_URL, {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{
-      i: token,
-      limit: {BATCH_SIZE},
-      withFiles: true,
-      untilId: untilId
-    }})
+// 現在のインデックスを表示
+function showIdx() {{
+  Array.from(container.children).forEach((el, i) => {{
+    el.style.display = (i === idx ? "block" : "none");
+  }});
+}}
+
+// 次バッチを取得して medias に追加
+async function loadMore() {{
+  const payload = {{ i: token, limit: batchSize }};
+  if (untilId) payload.untilId = untilId;
+  const res = await fetch(apiUrl, {{
+    method: "POST",
+    headers: {{ "Content-Type": "application/json" }},
+    body: JSON.stringify(payload)
   }});
   const notes = await res.json();
-  if (notes.length > 0) {{
-    untilId = notes[notes.length - 1].id;
-    for (const note of notes) {{
-      const fs = note.files || [];
-      for (const f of fs) {{
-        if (f.type.startsWith('image') || f.type.startsWith('video')) {{
-          medias.push({{url: f.url, type: f.type}});
-        }}
-      }});
-    </script>
-    """
-    components.html(html_code, height=500, scrolling=False)
+  if (!notes.length) return;
+  untilId = notes[notes.length - 1].id;
+  notes.forEach(note => {{
+    note.files.forEach(f => {{
+      if (f.type.startsWith("image") || f.type.startsWith("video")) {{
+        medias.push({{ url: f.url, type: f.type }});
       }}
-    }}
-  }}
+    }});
+  }});
+  renderAll();
 }}
 
-render();
+// 初期描画
+renderAll();
+showIdx();
 
-else:
-    st.info("画像または動画を含むノートが見つかりませんでした。")
-const viewer = document.getElementById('viewer');
+// タッチスワイプ検知
 let startX = 0;
-viewer.addEventListener('touchstart', e => {{
-  startX = e.changedTouches[0].screenX;
-}});
-viewer.addEventListener('touchend', async e => {{
+container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].screenX; }});
+container.addEventListener("touchend", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
   if (Math.abs(diff) > 50) {{
-    idx += diff < 0 ? 1 : -1;
-    if (idx < 0) idx = 0;
-    if (idx >= medias.length) {{
-      await fetchMore();
+    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
+    showIdx();
+    if (idx === medias.length - 1) {{
+      await loadMore();
     }}
-    if (idx >= medias.length) idx = medias.length - 1;
-    render();
   }}
 }});
 </script>
 """
-        components.html(html_code, height=500, scrolling=False)
-except Exception as e:
-    st.error(f"エラーが発生しました：{e}")
 
-
+components.html(html_code, height=800, scrolling=False)
