@@ -12,20 +12,6 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey ローカルTL メディアビューア（seikora.one）")
 
-# ── 縦スクロール無効化トグル ─────────────────
-disable_scroll = st.checkbox("縦スクロールを無効化する", value=False)
-if disable_scroll:
-    st.markdown(
-        """
-        <style>
-          html, body, .block-container {
-            overflow-y: hidden !important;
-          }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
 # ── セッションステート初期化 ─────────────────
 if "media_urls" not in st.session_state:
     st.session_state.media_urls = []
@@ -34,7 +20,7 @@ if "media_urls" not in st.session_state:
 
 @st.cache_data(ttl=60)
 def fetch_batch(token, limit, until_id=None):
-    """Misskey ローカルTLをバッチで取得"""
+    """ローカルTLをバッチで取得"""
     payload = {"i": token, "limit": limit, "withFiles": True}
     if until_id:
         payload["untilId"] = until_id
@@ -48,11 +34,14 @@ def load_more():
     if not notes:
         st.session_state.has_more = False
         return
+    # until_id を更新（最終ノートのID）
     st.session_state.until_id = notes[-1]["id"]
+    # メディアURLを積み増し
     for note in notes:
         for f in note.get("files", []):
             if f["type"].startswith(("image", "video")):
                 st.session_state.media_urls.append(f["url"])
+    # 取得件数が少なければ読み込み終了
     if len(notes) < BATCH_SIZE:
         st.session_state.has_more = False
 
@@ -66,16 +55,13 @@ if st.session_state.has_more:
         load_more()
 
 # ── メディア表示 ─────────────────
-if not st.session_state.media_urls:
-    st.info("画像または動画を含むノートが見つかりませんでした。")
-else:
-    # ベーススクリプトの HTML+JS 部分（安定版）をそのまま使用
+if st.session_state.media_urls:
     imgs_html = "\n".join(
         f'<img src="{url}" class="media" style="display:none; width:100%; height:auto;">'
         for url in st.session_state.media_urls
     )
     html_code = f"""
-    <div id="viewer" style="touch-action: pan-y; width:100%; height:100vh; margin:0; padding:0;">
+    <div id="viewer" style="touch-action: pan-y;">
       {imgs_html}
     </div>
     <script>
@@ -99,5 +85,7 @@ else:
       }});
     </script>
     """
-    components.html(html_code, height=800, scrolling=False)
+    components.html(html_code, height=500, scrolling=False)
 
+else:
+    st.info("画像または動画を含むノートが見つかりませんでした。")
