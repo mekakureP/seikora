@@ -14,27 +14,28 @@ BATCH_SIZE       = 60
 st.title("📸 Misskey ローカルTL メディアビューア（自動バッチ＆スワイプ）")
 
 @st.cache_data(ttl=60)
-def fetch_initial(token: str, limit: int):
-    """最初のバッチを取得"""
+def fetch_initial(token: str, limit: int, until_id: str | None = None):
+    """Misskey ローカルTLをバッチ取得"""
     payload = {"i": token, "limit": limit, "withFiles": True}
+    if until_id:
+        payload["untilId"] = until_id
     res = requests.post(API_URL, json=payload)
     res.raise_for_status()
     return res.json()
 
 # Python 側で最初の 60 件を取得
-initial_notes   = fetch_initial(API_TOKEN, BATCH_SIZE)
-initial_media   = [
+initial_notes = fetch_initial(API_TOKEN, BATCH_SIZE)
+initial_media = [
     {"url": f["url"], "type": f["type"]}
     for note in initial_notes
     for f in note.get("files", [])
     if f["type"].startswith(("image", "video"))
 ]
-# 次バッチ取得用 untilId
+# 次バッチ取得用 until_id
 initial_until_id = initial_notes[-1]["id"] if initial_notes else None
 
-# JSON にエンコード
-media_json   = json.dumps(initial_media)
-until_id_js  = "null" if initial_until_id is None else f'"{initial_until_id}"'
+# JSON にエンコードして JS へ渡す準備\media_json = json.dumps(initial_media)
+until_id_js = "null" if initial_until_id is None else f'"{initial_until_id}"'
 
 # HTML + JavaScript
 html_code = f"""
@@ -56,15 +57,15 @@ let medias      = {media_json};
 const container = document.getElementById("viewer");
 let idx = 0;
 
-// 要素作成ヘルパー
+// メディア要素作成ヘルパー
 function makeElement(item) {{
   if (item.type.startsWith("video")) {{
     const v = document.createElement("video");
-    v.src     = item.url;
-    v.controls= true;
-    v.autoplay= true;
-    v.loop    = true;
-    v.muted   = true;
+    v.src      = item.url;
+    v.controls = true;
+    v.autoplay = true;
+    v.loop     = true;
+    v.muted    = true;
     v.style.maxWidth  = "100%";
     v.style.maxHeight = "100%";
     v.style.objectFit = "contain";
@@ -72,7 +73,7 @@ function makeElement(item) {{
     return v;
   }} else {{
     const img = document.createElement("img");
-    img.src    = item.url;
+    img.src             = item.url;
     img.style.maxWidth  = "100%";
     img.style.maxHeight = "100%";
     img.style.objectFit = "contain";
@@ -81,7 +82,7 @@ function makeElement(item) {{
   }}
 }}
 
-// viewer に全メディア要素を追加
+// 全メディアを renderer
 function renderAll() {{
   container.innerHTML = "";
   medias.forEach(item => {{
@@ -89,20 +90,20 @@ function renderAll() {{
   }});
 }}
 
-// 現在の idx を表示
+// 現在のインデックスを表示
 function showIdx() {{
   Array.from(container.children).forEach((el, i) => {{
     el.style.display = (i === idx ? "block" : "none");
   }});
 }}
 
-// 次バッチを取得して medias に追加
+// 次バッチ読み込み
 async function loadMore() {{
   const payload = {{ i: token, limit: batchSize }};
   if (untilId) payload.untilId = untilId;
   const res = await fetch(apiUrl, {{
     method: "POST",
-    headers: {{ "Content-Type": "application/json" }},
+    headers: {{"Content-Type": "application/json"}},
     body: JSON.stringify(payload)
   }});
   const notes = await res.json();
@@ -115,8 +116,7 @@ async function loadMore() {{
       }}
     }});
   }});
-  renderAll();
-  // idx は維持
+  renderAll();  // 追加後も idx を保持
 }}
 
 // 初期描画
@@ -125,22 +125,18 @@ showIdx();
 
 // タッチスワイプ検知
 let startX = 0;
-container.addEventListener("touchstart", e => {{
-  startX = e.changedTouches[0].screenX;
-}});
+container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].screenX; }});
 container.addEventListener("touchend", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
   if (Math.abs(diff) > 50) {{
     idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
     showIdx();
-    // 末尾到達で次バッチ読み込み
-    if (idx === medias.length - 1) {{
-      await loadMore();
-    }}
+    if (idx === medias.length - 1) await loadMore();
   }}
 }});
 </script>
 """
 
 components.html(html_code, height=800, scrolling=False)
+
 
