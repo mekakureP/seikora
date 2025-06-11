@@ -4,46 +4,68 @@ import json
 import streamlit.components.v1 as components
 
 # ────────────────────────────────
-# 設定
+# Misskey インスタンス設定
 MISSKEY_INSTANCE = "seikora.one"
 API_TOKEN        = st.secrets["MISSKEY_API_TOKEN"]
-API_URL          = f"https://{MISSKEY_INSTANCE}/api/notes/local-timeline"
+LOCAL_API_URL    = f"https://{MISSKEY_INSTANCE}/api/notes/local-timeline"
+USER_API_URL     = f"https://{MISSKEY_INSTANCE}/api/users/notes"
 BATCH_SIZE       = 60
 # ────────────────────────────────
 
-st.title("📸 Misskey ローカルTL メディアビューア（フィルタ＆自動バッチ＆スワイプ）")
+st.title("📸 Misskey メディアビューア（ユーザー指定＆自動バッチ＆スワイプ）")
 
-# アカウント名フィルタ入力（@以下をユーザー名として扱う）
-raw_filter = st.text_input("表示するアカウント名でフィルタ (例: @username)", value="")
-filter_user = raw_filter.lstrip("@")  # 先頭の@を除去
+# ユーザー指定入力（@以下のユーザー名）
+raw_user = st.text_input("表示するユーザー名を指定 (例: @username)", value="")
+username = raw_user.lstrip("@")
 
 @st.cache_data(ttl=60)
 def fetch_batch(token: str, limit: int, until_id: str | None = None):
-    """Misskey ローカルTLをバッチ取得"""
+    """ローカルTLをバッチ取得"""
     payload = {"i": token, "limit": limit, "withFiles": True}
     if until_id:
         payload["untilId"] = until_id
-    res = requests.post(API_URL, json=payload)
+    res = requests.post(LOCAL_API_URL, json=payload)
     res.raise_for_status()
     return res.json()
 
-# 初期バッチ取得
-initial_notes = fetch_batch(API_TOKEN, BATCH_SIZE)
+@st.cache_data(ttl=60)
+def fetch_user_notes(token: str, username: str, limit: int, until_id: str | None = None):
+    """ユーザーのノート（リノート含む）をバッチ取得"""
+    payload = {
+        "i": token,
+        "username": username,
+        "limit": limit,
+        "includeMyRenotes": True,
+        "withFiles": True
+    }
+    if until_id:
+        payload["untilId"] = until_id
+    res = requests.post(USER_API_URL, json=payload)
+    res.raise_for_status()
+    return res.json()
 
-# Pythonフェーズでメディア抽出のみ（ユーザー名も保持）
-initial_media = [
-    {"url": f["url"], "type": f["type"], "username": note.get("user", {}).get("username", "")}
-    for note in initial_notes
-    for f in note.get("files", [])
-    if f["type"].startswith(("image", "video"))
-]
-# 次バッチ取得用 until_id
-initial_until_id = initial_notes[-1].get("id") if initial_notes else None
+# 初回バッチ取得
+if username:
+    notes = fetch_user_notes(API_TOKEN, username, BATCH_SIZE)
+    api_url_js = USER_API_URL
+else:
+    notes = fetch_batch(API_TOKEN, BATCH_SIZE)
+    api_url_js = LOCAL_API_URL
 
-# JSON化
-media_json  = json.dumps(initial_media)
-until_id_js = "null" if initial_until_id is None else f'\"{initial_until_id}\"'
-filter_js   = json.dumps(filter_user)
+# メディア抽出と次バッチ用ID
+initial_media = []
+for note in notes:
+    for f in note.get("files", []):
+        if f.get("type", "").startswith(("image", "video")):
+            initial_media.append({
+                "url": f["url"],
+                "type": f["type"],
+            })
+initial_until_id = notes[-1].get("id") if notes else None
+
+# JSON にエンコード
+media_json   = json.dumps(initial_media)
+until_id_js  = "null" if initial_until_id is None else f'"{initial_until_id}"'
 
 # 埋め込み HTML + JavaScript
 html_code = """
@@ -55,12 +77,11 @@ html_code = """
     overflow:hidden; touch-action: pan-y;
 \"></div>
 <script>
-const apiUrl    = "{API_URL}";
-const token     = "{API_TOKEN}";
-const batchSize = {BATCH_SIZE};
-let untilId     = {until_id_js};
-let medias      = {media_json};
-const filterUser= {filter_js};
+const apiUrl    = "{api_url}";
+const token     = "{token}";
+const batchSize = {batch_size};
+let untilId     = {until_id};
+let medias      = {media_list};
 const container = document.getElementById("viewer");
 let idx = 0;
 
@@ -91,12 +112,7 @@ function makeElement(item) {{
 
 function renderAll() {{
   container.innerHTML = "";
-  medias.forEach(item => {{
-    // フィルタ: filterUser が空なら全表示、指定ありなら username 一致
-    if (!filterUser || item.username === filterUser) {{
-      container.appendChild(makeElement(item));
-    }}
-  }});
+  medias.forEach(item => {{ container.appendChild(makeElement(item)); }});
 }}
 
 function showIdx() {{
@@ -116,11 +132,11 @@ async function loadMore() {{
   }});
   const notes = await res.json();
   if (!notes.length) return;
-  untilId = notes[notes.length-1].id;
+  untilId = notes[notes.length - 1].id;
   notes.forEach(note => {{
     note.files.forEach(f => {{
       if (f.type.startsWith("image") || f.type.startsWith("video")) {{
-        medias.push({{url:f.url, type:f.type, username: note.user.username}});
+        medias.push({{url: f.url, type: f.type}});
       }}
     }});
   }});
@@ -134,23 +150,20 @@ container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].sc
 container.addEventListener("touchend", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
   if (Math.abs(diff) > 50) {{
-    const visibleCount = container.children.length;
-    idx = (idx + (diff < 0 ? 1 : -1) + visibleCount) % visibleCount;
+    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
     showIdx();
-    if (idx === visibleCount - 1) await loadMore();
+    if (idx === medias.length - 1) await loadMore();
   }}
 }});
 </script>
 """.format(
-    API_URL=API_URL,
-    API_TOKEN=API_TOKEN,
-    BATCH_SIZE=BATCH_SIZE,
-    until_id_js=until_id_js,
-    media_json=media_json,
-    filter_js=filter_js
+    api_url=api_url_js,
+    token=API_TOKEN,
+    batch_size=BATCH_SIZE,
+    until_id=until_id_js,
+    media_list=media_json
 )
 
 components.html(html_code, height=800, scrolling=False)
-
 
 
