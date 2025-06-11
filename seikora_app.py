@@ -12,11 +12,21 @@ USER_API_URL     = f"https://{MISSKEY_INSTANCE}/api/users/notes"
 BATCH_SIZE       = 60
 # ────────────────────────────────
 
-st.title("📸 Misskey メディアビューア（ユーザー指定＆自動バッチ＆スワイプ）")
+st.title("📸 Misskey メディアビューア")
 
-# ユーザー指定入力（@以下のユーザー名）
-raw_user = st.text_input("表示するユーザー名を指定 (例: @username)", value="")
-username = raw_user.lstrip("@")
+# ── モード選択 ─────────────────────────
+mode = st.radio(
+    "取得モードを選択",
+    ("ローカルTL",
+     "ユーザー指定TL"),
+    index=0
+)
+
+# ユーザー指定モードの場合のみ入力
+username = None
+if mode == "ユーザー指定TL":
+    raw_user = st.text_input("表示するユーザー名を指定（@以下）", value="")
+    username = raw_user.lstrip("@") or None
 
 @st.cache_data(ttl=60)
 def fetch_batch(token: str, limit: int, until_id: str | None = None):
@@ -30,7 +40,7 @@ def fetch_batch(token: str, limit: int, until_id: str | None = None):
 
 @st.cache_data(ttl=60)
 def fetch_user_notes(token: str, username: str, limit: int, until_id: str | None = None):
-    """ユーザーのノート（リノート含む）をバッチ取得"""
+    """指定ユーザーのノート（リノート含む）をバッチ取得"""
     payload = {
         "i": token,
         "username": username,
@@ -44,8 +54,8 @@ def fetch_user_notes(token: str, username: str, limit: int, until_id: str | None
     res.raise_for_status()
     return res.json()
 
-# 初回バッチ取得
-if username:
+# 初回ノート取得
+if mode == "ユーザー指定TL" and username:
     notes = fetch_user_notes(API_TOKEN, username, BATCH_SIZE)
     api_url_js = USER_API_URL
 else:
@@ -59,7 +69,7 @@ for note in notes:
         if f.get("type", "").startswith(("image", "video")):
             initial_media.append({
                 "url": f["url"],
-                "type": f["type"],
+                "type": f["type"]
             })
 initial_until_id = notes[-1].get("id") if notes else None
 
@@ -67,7 +77,7 @@ initial_until_id = notes[-1].get("id") if notes else None
 media_json   = json.dumps(initial_media)
 until_id_js  = "null" if initial_until_id is None else f'"{initial_until_id}"'
 
-# 埋め込み HTML + JavaScript
+# HTML + JavaScript をフォーマット
 html_code = """
 <div id=\"viewer\" style=\"
     position: fixed; top:0; left:0;
