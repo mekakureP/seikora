@@ -13,8 +13,9 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey ローカルTL メディアビューア（フィルタ＆自動バッチ＆スワイプ）")
 
-# アカウント名フィルタ入力
-filter_user = st.text_input("表示するアカウント名でフィルタ (ユーザー名のみ)", value="")
+# アカウント名フィルタ入力（@以下をユーザー名として扱う）
+raw_filter = st.text_input("表示するアカウント名でフィルタ (例: @username)", value="")
+filter_user = raw_filter.lstrip("@")  # 先頭の@を除去
 
 @st.cache_data(ttl=60)
 def fetch_batch(token: str, limit: int, until_id: str | None = None):
@@ -26,12 +27,12 @@ def fetch_batch(token: str, limit: int, until_id: str | None = None):
     res.raise_for_status()
     return res.json()
 
-# 初期バッチ取得（Python側でフィルタせず全件取得）
+# 初期バッチ取得
 initial_notes = fetch_batch(API_TOKEN, BATCH_SIZE)
 
-# Pythonフェーズでメディア抽出のみ
+# Pythonフェーズでメディア抽出のみ（ユーザー名も保持）
 initial_media = [
-    {"url": f["url"], "type": f["type"], "username": note.get("user", {}).get("username", "")}  # ユーザー名付き
+    {"url": f["url"], "type": f["type"], "username": note.get("user", {}).get("username", "")}
     for note in initial_notes
     for f in note.get("files", [])
     if f["type"].startswith(("image", "video"))
@@ -90,11 +91,19 @@ function makeElement(item) {{
 
 function renderAll() {{
   container.innerHTML = "";
-  medias.forEach(item => {{ container.appendChild(makeElement(item)); }});
+  medias.forEach(item => {{
+    // フィルタ: filterUser が空なら全表示、指定ありなら username 一致
+    if (!filterUser || item.username === filterUser) {{
+      container.appendChild(makeElement(item));
+    }}
+  }});
 }}
 
 function showIdx() {{
-  Array.from(container.children).forEach((el,i) => {{ el.style.display = (i===idx?"block":"none"); }});
+  const children = container.children;
+  for (let i = 0; i < children.length; i++) {{
+    children[i].style.display = i === idx ? "block" : "none";
+  }}
 }}
 
 async function loadMore() {{
@@ -110,9 +119,8 @@ async function loadMore() {{
   untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
     note.files.forEach(f => {{
-      if ((f.type.startsWith("image") || f.type.startsWith("video"))
-          && (!filterUser || note.user.username === filterUser)) {{
-        medias.push({{url:f.url, type:f.type}});
+      if (f.type.startsWith("image") || f.type.startsWith("video")) {{
+        medias.push({{url:f.url, type:f.type, username: note.user.username}});
       }}
     }});
   }});
@@ -126,9 +134,10 @@ container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].sc
 container.addEventListener("touchend", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
   if (Math.abs(diff) > 50) {{
-    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
+    const visibleCount = container.children.length;
+    idx = (idx + (diff < 0 ? 1 : -1) + visibleCount) % visibleCount;
     showIdx();
-    if (idx === medias.length - 1) await loadMore();
+    if (idx === visibleCount - 1) await loadMore();
   }}
 }});
 </script>
