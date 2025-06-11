@@ -11,7 +11,10 @@ API_URL          = f"https://{MISSKEY_INSTANCE}/api/notes/local-timeline"
 BATCH_SIZE       = 60
 # ────────────────────────────────
 
-st.title("Misskey")
+st.title("📸 Misskey ローカルTL メディアビューア（フィルタ＆自動バッチ＆スワイプ）")
+
+# アカウント名フィルタ入力
+filter_user = st.text_input("表示するアカウント名でフィルタ (ユーザー名のみ) ", value="")
 
 @st.cache_data(ttl=60)
 def fetch_batch(token: str, limit: int, until_id: str | None = None):
@@ -23,21 +26,25 @@ def fetch_batch(token: str, limit: int, until_id: str | None = None):
     res.raise_for_status()
     return res.json()
 
-# Python 側で最初の 60 件を取得
+# 初期バッチ取得
 initial_notes = fetch_batch(API_TOKEN, BATCH_SIZE)
+# Pythonフェーズでフィルタおよびメディア抽出
 initial_media = [
     {"url": f["url"], "type": f["type"]}
     for note in initial_notes
     for f in note.get("files", [])
     if f["type"].startswith(("image", "video"))
+       and (not filter_user or note.get("user", {}).get("username", "") == filter_user)
 ]
-initial_until_id = initial_notes[-1]["id"] if initial_notes else None
+# 次バッチ取得用 until_id
+initial_until_id = initial_notes[-1].get("id") if initial_notes else None
 
-# JSON にエンコードして JS へ渡す準備
+# JSON化
 media_json  = json.dumps(initial_media)
 until_id_js = "null" if initial_until_id is None else f'"{initial_until_id}"'
+filter_js   = f'"{filter_user}"'
 
-# HTML + JavaScript
+# HTML + JavaScript 部分
 html_code = f"""
 <div id="viewer" style="
     position: fixed; top:0; left:0;
@@ -46,18 +53,16 @@ html_code = f"""
     display:flex; align-items:center; justify-content:center;
     overflow:hidden; touch-action: pan-y;
 "></div>
-
 <script>
 const apiUrl    = "{API_URL}";
 const token     = "{API_TOKEN}";
 const batchSize = {BATCH_SIZE};
 let untilId     = {until_id_js};
 let medias      = {media_json};
-
+const filterUser= {filter_js};
 const container = document.getElementById("viewer");
 let idx = 0;
 
-// メディア要素作成ヘルパー
 function makeElement(item) {{
   if (item.type.startsWith("video")) {{
     const v = document.createElement("video");
@@ -66,7 +71,7 @@ function makeElement(item) {{
     v.autoplay   = true;
     v.loop       = true;
     v.muted      = true;
-    v.playsInline = true;  // iOS等でインライン自動再生を可能に
+    v.playsInline= true;
     v.style.maxWidth  = "100%";
     v.style.maxHeight = "100%";
     v.style.objectFit = "contain";
@@ -83,62 +88,45 @@ function makeElement(item) {{
   }}
 }}
 
-// viewer に全メディア要素を追加
 function renderAll() {{
   container.innerHTML = "";
-  medias.forEach(item => {{
-    container.appendChild(makeElement(item));
-  }});
+  medias.forEach(item => {{ container.appendChild(makeElement(item)); }});
 }}
 
-// 現在のインデックスを表示
 function showIdx() {{
-  Array.from(container.children).forEach((el, i) => {{
-    el.style.display = (i === idx ? "block" : "none");
-  }});
+  Array.from(container.children).forEach((el,i) => {{ el.style.display = (i===idx?"block":"none"); }});
 }}
 
-// 次バッチを取得して medias に追加
 async function loadMore() {{
   const payload = {{ i: token, limit: batchSize }};
   if (untilId) payload.untilId = untilId;
   const res = await fetch(apiUrl, {{
     method: "POST",
-    headers: {{ "Content-Type": "application/json" }},
+    headers: {{"Content-Type":"application/json"}},
     body: JSON.stringify(payload)
   }});
   const notes = await res.json();
   if (!notes.length) return;
-  untilId = notes[notes.length - 1].id;
+  untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
-    note.files.forEach(f => {{
-      if (f.type.startsWith("image") || f.type.startsWith("video")) {{
-        medias.push({{ url: f.url, type: f.type }});
-      }}
-    }});
+    // JSフェーズでもフィルタ判定
+    if (!filterUser || note.user.username === filterUser) {{
+      note.files.forEach(f=>{{
+        if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,type:f.type}});
+      }});
+    }}
   }});
-  renderAll();  // 追加後も idx を保持
+  renderAll();
 }}
 
-// 初期描画
-renderAll();
-showIdx();
-
-// タッチスワイプ検知
-let startX = 0;
-container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].screenX; }});
-container.addEventListener("touchend", async e => {{
-  const diff = e.changedTouches[0].screenX - startX;
-  if (Math.abs(diff) > 50) {{
-    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
-    showIdx();
-    if (idx === medias.length - 1) {{
-      await loadMore();
-    }}
-  }}
+renderAll(); showIdx();
+let startX=0;
+container.addEventListener("touchstart",e=>{ startX=e.changedTouches[0].screenX; });
+container.addEventListener("touchend",async e=>{{
+  const diff=e.changedTouches[0].screenX - startX;
+  if(Math.abs(diff)>50){{ idx=(idx+(diff<0?1:-1)+medias.length)%medias.length; showIdx(); if(idx===medias.length-1) await loadMore(); }}
 }});
 </script>
 """
-
 components.html(html_code, height=800, scrolling=False)
 
