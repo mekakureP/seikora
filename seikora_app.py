@@ -41,18 +41,18 @@ initial_until_id = initial_notes[-1].get("id") if initial_notes else None
 
 # JSON化
 media_json  = json.dumps(initial_media)
-until_id_js = "null" if initial_until_id is None else f'"{initial_until_id}"'
-filter_js   = f'"{filter_user}"'
+until_id_js = "null" if initial_until_id is None else f'\"{initial_until_id}\"'
+filter_js   = f'\"{filter_user}\"'
 
-# HTML + JavaScript 部分
-html_code = f"""
-<div id="viewer" style="
+# HTML + JavaScript 部分 (.format を利用して JS の波括弧を保持)
+html_code = """
+<div id=\"viewer\" style=\"
     position: fixed; top:0; left:0;
     width:100vw; height:100vh;
     background:#000;
     display:flex; align-items:center; justify-content:center;
     overflow:hidden; touch-action: pan-y;
-"></div>
+\"></div>
 <script>
 const apiUrl    = "{API_URL}";
 const token     = "{API_TOKEN}";
@@ -63,8 +63,8 @@ const filterUser= {filter_js};
 const container = document.getElementById("viewer");
 let idx = 0;
 
-function makeElement(item) {{{{
-  if (item.type.startsWith("video")) {{{{
+function makeElement(item) {{
+  if (item.type.startsWith("video")) {{
     const v = document.createElement("video");
     v.src        = item.url;
     v.controls   = true;
@@ -77,7 +77,7 @@ function makeElement(item) {{{{
     v.style.objectFit = "contain";
     v.style.display   = "none";
     return v;
-  }}}} else {{{{
+  }} else {{
     const img = document.createElement("img");
     img.src             = item.url;
     img.style.maxWidth  = "100%";
@@ -85,51 +85,59 @@ function makeElement(item) {{{{
     img.style.objectFit = "contain";
     img.style.display   = "none";
     return img;
-  }}}}
-}}}}
+  }}
+}}
 
-function renderAll() {{{{
+function renderAll() {{
   container.innerHTML = "";
-  medias.forEach(item => {{{{ container.appendChild(makeElement(item)); }}}});
-}}}}
+  medias.forEach(item => {{ container.appendChild(makeElement(item)); }});
+}}
 
-function showIdx() {{{{
-  Array.from(container.children).forEach((el,i) => {{{{ el.style.display = (i===idx?"block":"none"); }}}});
-}}}}
+function showIdx() {{
+  Array.from(container.children).forEach((el,i) => {{ el.style.display = (i===idx?"block":"none"); }});
+}}
 
-async function loadMore() {{{{
-  const payload = {{{{ i: token, limit: batchSize }}}};
+async function loadMore() {{
+  const payload = {{ i: token, limit: batchSize }};
   if (untilId) payload.untilId = untilId;
-  const res = await fetch(apiUrl, {{{{
+  const res = await fetch(apiUrl, {{
     method: "POST",
-    headers: {{{{ "Content-Type":"application/json" }}}},
+    headers: {{"Content-Type":"application/json"}},
     body: JSON.stringify(payload)
-  }}}});
+  }});
   const notes = await res.json();
   if (!notes.length) return;
   untilId = notes[notes.length-1].id;
-  notes.forEach(note => {{{{
-    if (!filterUser || note.user.username === filterUser) {{{{
-      note.files.forEach(f => {{{{
-        if (f.type.startsWith("image") || f.type.startsWith("video")) medias.push({{{{url:f.url,type:f.type}}}});
-      }}}});
-    }}}}
-  }}});
+  notes.forEach(note => {{
+    if (!filterUser || note.user.username === filterUser) {{
+      note.files.forEach(f => {{ if (f.type.startsWith("image") || f.type.startsWith("video")) medias.push({{url:f.url,type:f.type}}); }});
+    }}
+  }});
   renderAll();
-}}}}
+}}
 
+// 初期描画
 renderAll(); showIdx();
-let startX=0;
-container.addEventListener("touchstart",e=>{{ startX=e.changedTouches[0].screenX; }});
-container.addEventListener("touchend",async e=>{{
+let startX = 0;
+container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].screenX; }});
+container.addEventListener("touchend", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
-  if (Math.abs(diff)>50) {{{{
-    idx=(idx+(diff<0?1:-1)+medias.length)%medias.length;
+  if (Math.abs(diff) > 50) {{
+    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
     showIdx();
-    if(idx===medias.length-1) await loadMore();
-  }}}}
+    if (idx === medias.length - 1) await loadMore();
+  }}
 }});
 </script>
-"""
+""".format(
+    API_URL=API_URL,
+    API_TOKEN=API_TOKEN,
+    BATCH_SIZE=BATCH_SIZE,
+    until_id_js=until_id_js,
+    media_json=media_json,
+    filter_js=filter_js
+)
+
 components.html(html_code, height=800, scrolling=False)
+
 
