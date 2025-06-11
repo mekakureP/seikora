@@ -138,6 +138,4 @@ container.addEventListener("touchend", async e => {{
     filter_js=filter_js
 )
 
-components.html(html_code, height=800, scrolling=False)
-
 
