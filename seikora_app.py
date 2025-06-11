@@ -26,15 +26,15 @@ def fetch_batch(token: str, limit: int, until_id: str | None = None):
     res.raise_for_status()
     return res.json()
 
-# 初期バッチ取得
+# 初期バッチ取得（Python側でフィルタせず全件取得）
 initial_notes = fetch_batch(API_TOKEN, BATCH_SIZE)
-# Pythonフェーズでフィルタおよびメディア抽出
+
+# Pythonフェーズでメディア抽出のみ
 initial_media = [
-    {"url": f["url"], "type": f["type"]}
+    {"url": f["url"], "type": f["type"], "username": note.get("user", {}).get("username", "")}  # ユーザー名付き
     for note in initial_notes
     for f in note.get("files", [])
     if f["type"].startswith(("image", "video"))
-       and (not filter_user or note.get("user", {}).get("username", "") == filter_user)
 ]
 # 次バッチ取得用 until_id
 initial_until_id = initial_notes[-1].get("id") if initial_notes else None
@@ -42,9 +42,9 @@ initial_until_id = initial_notes[-1].get("id") if initial_notes else None
 # JSON化
 media_json  = json.dumps(initial_media)
 until_id_js = "null" if initial_until_id is None else f'\"{initial_until_id}\"'
-filter_js   = f'\"{filter_user}\"'
+filter_js   = json.dumps(filter_user)
 
-# HTML + JavaScript 部分 (.format を利用して JS の波括弧を保持)
+# 埋め込み HTML + JavaScript
 html_code = """
 <div id=\"viewer\" style=\"
     position: fixed; top:0; left:0;
@@ -109,9 +109,12 @@ async function loadMore() {{
   if (!notes.length) return;
   untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
-    if (!filterUser || note.user.username === filterUser) {{
-      note.files.forEach(f => {{ if (f.type.startsWith("image") || f.type.startsWith("video")) medias.push({{url:f.url,type:f.type}}); }});
-    }}
+    note.files.forEach(f => {{
+      if ((f.type.startsWith("image") || f.type.startsWith("video"))
+          && (!filterUser || note.user.username === filterUser)) {{
+        medias.push({{url:f.url, type:f.type}});
+      }}
+    }});
   }});
   renderAll();
 }}
@@ -137,5 +140,8 @@ container.addEventListener("touchend", async e => {{
     media_json=media_json,
     filter_js=filter_js
 )
+
+components.html(html_code, height=800, scrolling=False)
+
 
 
