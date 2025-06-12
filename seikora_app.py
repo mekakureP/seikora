@@ -6,7 +6,6 @@ import streamlit.components.v1 as components
 # ────────────────────────────────
 # Misskey インスタンス設定
 MISSKEY_INSTANCE = "seikora.one"
-API_TOKEN        = st.secrets["MISSKEY_API_TOKEN"]
 LOCAL_API_URL    = f"https://{MISSKEY_INSTANCE}/api/notes/local-timeline"
 USER_API_URL     = f"https://{MISSKEY_INSTANCE}/api/users/notes"
 SHOW_USER_URL    = f"https://{MISSKEY_INSTANCE}/api/users/show"
@@ -14,6 +13,19 @@ BATCH_SIZE       = 60
 # ────────────────────────────────
 
 st.title("📸 Misskey メディアビューア")
+
+# ── APIトークン取得 ─────────────────────────
+try:
+    # まず .streamlit/secrets.toml または Cloud UI の Secrets から読みに行く
+    API_TOKEN = st.secrets["MISSKEY_API_TOKEN"]
+except KeyError:
+    # 存在しなければパスワード入力欄で手入力にフォールバック
+    API_TOKEN = st.text_input(
+        "Misskey API トークンを入力してください", 
+        type="password"
+    )
+    if not API_TOKEN:
+        st.warning
 
 # モード選択
 mode = st.radio(
