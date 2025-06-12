@@ -16,10 +16,12 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey メディアビューア")
 
-# ── API トークン取得（Secrets または手動入力）─────────────────
-try:
-    API_TOKEN = st.secrets["MISSKEY_API_TOKEN"]
-except Exception:
+# ── API トークン取得（Secrets, 環境変数, 手動入力フォールバック）─────────────────
+import os
+# 環境変数 or Streamlit Secrets からトークン取得
+API_TOKEN = os.environ.get("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
+if not API_TOKEN:
+    # 手動入力フォールバック
     API_TOKEN = st.text_input(
         "Misskey API トークンを入力してください", type="password"
     )
@@ -27,7 +29,7 @@ except Exception:
         st.warning("API トークンが設定されていません。入力が必要です。")
         st.stop()
 
-# ── 取得モード選択 ─────────────────────────
+# ── 取得モード選択 ───────────────────────── ─────────────────────────
 mode = st.radio(
     "取得モードを選択",
     ("ローカルTL", "ユーザー指定TL"),
