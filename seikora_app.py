@@ -3,8 +3,6 @@ import requests
 import json
 import streamlit.components.v1 as components
 import os
-import re
-from pathlib import Path
 
 # ────────────────────────────────
 # Misskey インスタンス設定
@@ -17,8 +15,7 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey メディアビューア")
 
-# ── API トークン取得（環境変数 → st.secrets → 手入力フォールバック）─────────────────
-import os
+# ── API トークン取得（環境変数 → st.secrets → 手入力）─────────────────
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
 if not API_TOKEN:
     API_TOKEN = st.text_input(
@@ -51,7 +48,10 @@ def fetch_batch(token: str, limit: int, until_id: str | None = None):
 
 @st.cache_data(ttl=300)
 def fetch_user_id(token: str, username: str) -> str:
-    res = requests.post(SHOW_USER_URL, json={"i": token, "username": username})
+    res = requests.post(
+        SHOW_USER_URL,
+        json={"i": token, "username": username},
+    )
     res.raise_for_status()
     return res.json().get("id")
 
@@ -89,43 +89,85 @@ initial_until_id = notes[-1].get("id") if notes else None
 
 # ── HTML/JS ビューア埋め込み ─────────────────────────
 html_code = f"""
-<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;\
- background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
+<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
 <script>
-const apiUrl = "{api_url}";
-const token = "{API_TOKEN}";
+const apiUrl    = "{api_url}";
+const token     = "{API_TOKEN}";
 const batchSize = {BATCH_SIZE};
-let untilId = {json.dumps(initial_until_id)};
-let medias = {json.dumps(initial_media)};
+let untilId     = {json.dumps(initial_until_id)};
+let medias      = {json.dumps(initial_media)};
 const container = document.getElementById("viewer");
 let idx = 0;
-function makeElement(item) {{ if(item.type.startsWith("video")) {{
-    const v = document.createElement("video"); v.src=item.url; v.controls=true; v.autoplay=true; v.loop=true;
-    v.muted=true; v.playsInline=true;
-    v.style.maxWidth="100%"; v.style.maxHeight="100%"; v.style.objectFit="contain";
-    v.style.display="none"; return v; }} else {{
-    const img = document.createElement("img"); img.src=item.url;
-    img.style.maxWidth="100%"; img.style.maxHeight="100%";
-    img.style.objectFit="contain"; img.style.display="none";
-    return img; }} }}
-function renderAll() {{ container.innerHTML=""; medias.forEach(i=>container.appendChild(makeElement(i))); }}
-function showIdx() {{ Array.from(container.children).forEach((el,i)=>el.style.display=i===idx?"block":"none"); }}
+
+function makeElement(item) {{
+  if (item.type.startsWith("video")) {{
+    const v = document.createElement("video");
+    v.src        = item.url;
+    v.controls   = true;
+    v.autoplay   = true;
+    v.loop       = true;
+    v.muted      = true;
+    v.playsInline= true;
+    v.style.maxWidth  = "100%";
+    v.style.maxHeight = "100%";
+    v.style.objectFit = "contain";
+    v.style.display   = "none";
+    return v;
+  }} else {{
+    const img = document.createElement("img");
+    img.src             = item.url;
+    img.style.maxWidth  = "100%";
+    img.style.maxHeight = "100%";
+    img.style.objectFit = "contain";
+    img.style.display   = "none";
+    return img;
+  }}
+}}
+
+function renderAll() {{ container.innerHTML = ""; medias.forEach(item => container.appendChild(makeElement(item))); }}
+function showIdx() {{ Array.from(container.children).forEach((el,i) => el.style.display = i===idx?"block":"none"); }}
+
 async function loadMore() {{
-  const payload={{i:token,limit:batchSize}}; if(untilId) payload.untilId=untilId;
-  const res=await fetch(apiUrl,{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify(payload)}});
-  const notes=await res.json(); if(!notes.length) return;
-  untilId=notes[notes.length-1].id;
-  notes.forEach(note=>{{ note.files.forEach(f=>{{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,type:f.type}}); }});
-    if(note.renote) note.renote.files.forEach(f=>{{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,type:f.type}}); }});
-  }});
+  const payload = {{ i: token, limit: batchSize }};
+  if (untilId) payload.untilId = untilId;
+  const res = await fetch(apiUrl, {{ method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(payload) }});
+  const notes = await res.json(); if (!notes.length) return;
+  untilId = notes[notes.length-1].id;
+  notes.forEach(note => {{ note.files.forEach(f => {{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,type:f.type}}); }}); if(note.renote) note.renote.files.forEach(f=>{{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,type:f.type}}); }}); }});
   renderAll();
 }}
+
 // 初期描画
 renderAll(); showIdx(); let startX=0;
-container.addEventListener("touchstart",e=>startX=e.changedTouches[0].screenX);
-container.addEventListener("touchend",async e=>{{const diff=e.changedTouches[0].screenX-startX;
-  if(Math.abs(diff)>50){{ idx=(idx+(diff<0?1:-1)+medias.length)%medias.length; showIdx(); if(idx===medias.length-1) await loadMore(); }}
+
+// 1. スワイプ操作
+container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].screenX; }});
+container.addEventListener("touchend", async e => {{
+  const diff = e.changedTouches[0].screenX - startX;
+  if (Math.abs(diff) > 50) {{
+    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
+    showIdx();
+    if (idx === medias.length - 1) await loadMore();
+  }}
 }});
+
+// 2. ダブルタップ（ダブルクリック）操作
+container.addEventListener("dblclick", e => {{
+  const x = e.clientX;
+  const w = window.innerWidth;
+  // 現在の要素を隠す
+  const children = container.children;
+  children[idx].style.display = "none";
+  if (x < w / 2) {{
+    // 左ダブルタップ → 前へ
+    idx = (idx - 1 + children.length) % children.length;
+  }} else {{
+    // 右ダブルタップ → 次へ
+    idx = (idx + 1) % children.length;
+  }}
+  children[idx].style.display = "block";
+}});
+
 </script>
 """
 
