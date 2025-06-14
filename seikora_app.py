@@ -17,23 +17,13 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey メディアビューア")
 
-# ── API トークン取得 ─────────────────────────
-# 優先順: 環境変数 → st.secrets → .streamlit/secrets.toml → 手入力
+# ── API トークン取得（環境変数 → st.secrets → 手入力フォールバック）─────────────────
+import os
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
 if not API_TOKEN:
-    # .streamlit/secrets.toml から読み込み
-    try:
-        secret_path = Path(__file__).parent / ".streamlit" / "secrets.toml"
-        if secret_path.exists():
-            content = secret_path.read_text(encoding="utf-8")
-            m = re.search(r'MISSKEY_API_TOKEN\s*=\s*["\'](.+?)["\']', content)
-            if m:
-                API_TOKEN = m.group(1)
-    except Exception:
-        pass
-
-if not API_TOKEN:
-    API_TOKEN = st.text_input("Misskey API トークンを入力してください", type="password")
+    API_TOKEN = st.text_input(
+        "Misskey API トークンを入力してください", type="password"
+    )
     if not API_TOKEN:
         st.warning("API トークンが設定されていません。入力が必要です。")
         st.stop()
