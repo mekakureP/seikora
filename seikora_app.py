@@ -14,6 +14,7 @@ BATCH_SIZE       = 60
 # ────────────────────────────────
 
 st.title("📸 Misskey メディアビューア")
+st.video("https://file.seikora.one/73845b07-19e6-4de4-a433-42446bd4afc8.mp4")
 
 # ── API トークン取得（環境変数 → st.secrets → 手入力）─────────────────
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
@@ -91,7 +92,16 @@ let idx = 0;
 
 function makeElement(item) {{
   if (item.type.startsWith(\"video\")) {{
-    const proxyUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+    const v = document.createElement(\"video\");
+    // 拡張子付き URL を組み立て
+    // 拡張子が item.url に含まれていればそのまま、含まれなければ名前を付加
+    const hasExt = /\.(mp4|webm|mov|m3u8)$/i.test(item.url);
+    // 拡張子が item.url に含まれていればそのまま、含まれなければ名前を付加
+    const proxyUrl = hasExt
+        ? item.url
+        : (item.name
+            ? `\${{item.url}}/\${{encodeURIComponent(item.name)}}`
+            : item.url);
     v.src           = proxyUrl;
     v.controls      = true;
     v.autoplay      = true;
