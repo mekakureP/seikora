@@ -91,16 +91,7 @@ let idx = 0;
 
 function makeElement(item) {{
   if (item.type.startsWith(\"video\")) {{
-    const v = document.createElement(\"video\");
-    // 拡張子付き URL を組み立て
-    // 拡張子が item.url に含まれていればそのまま、含まれなければ名前を付加
-    const hasExt = /\.(mp4|webm|mov|m3u8)$/i.test(item.url);
-    // 拡張子が item.url に含まれていればそのまま、含まれなければ名前を付加
-    const proxyUrl = hasExt
-        ? item.url
-        : (item.name
-            ? `\${{item.url}}/\${{encodeURIComponent(item.name)}}`
-            : item.url);
+    const proxyUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
     v.src           = proxyUrl;
     v.controls      = true;
     v.autoplay      = true;
