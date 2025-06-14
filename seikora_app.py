@@ -176,9 +176,9 @@ container.addEventListener("dblclick", e => {{
 components.html(
     html_code,
     height=800,
-    scrolling=False,
-    key="media_viewer"
+    scrolling=False
 )
+
 
 
 
