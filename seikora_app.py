@@ -130,7 +130,7 @@ function makeElement(item) {{
     v.setAttribute("x-webkit-playsinline", "");
     v.crossOrigin    = "anonymous";
     v.style.maxWidth  = "100%";
-    v.style.maxHeight = "100%";
+    v.style.maxHeight = "80vh";  // メディアの高さを抑え、本文表示スペースを確保
     v.style.objectFit = "contain";
     wrapper.appendChild(v);
 
