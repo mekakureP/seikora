@@ -14,11 +14,11 @@ BATCH_SIZE       = 60
 # ────────────────────────────────
 
 st.title("📸 Misskey メディアビューア")
-# テスト用サンプル動画① Big Buck Bunny (Google 公開サンプル)
-st.video("https://seikora.one/proxy/files/73845b07-19e6-4de4-a433-42446bd4afc8/video.mp4")
 
-# テスト用サンプル動画② MDN flower (完全に CORS 許可済み)
-st.video("https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4")
+# ── テスト用動画埋め込み ─────────────────────────
+# notes/show で返ってきた URL をそのまま指定
+test_url = "https://file.seikora.one/73845b07-19e6-4de4-a433-42446bd4afc8.mp4"
+st.video(test_url)
 
 # ── API トークン取得（環境変数 → st.secrets → 手入力）─────────────────
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
