@@ -73,32 +73,16 @@ for note in notes:
     snippet = "\n".join(lines[:3])
     for f in note.get("files", []):
         if f.get("type", "").startswith(("image", "video")):
-            initial_media.append({
-                "url": f["url"],
-                "type": f["type"],
-                "text": snippet
-            })
-    ren = note.get("renote")
-    if ren:
-        raw_text = ren.get("text", "")
-        lines = raw_text.split("\n")
-        snippet = "\n".join(lines[:3])
-        for f in ren.get("files", []):
-            if f.get("type", "").startswith(("image", "video")):
-                initial_media.append({
-                    "url": f["url"],
-                    "type": f["type"],
-                    "text": snippet
-                })
+            initial_media.append({"url": f["url"], "type": f["type"], "text": snippet})
 initial_until_id = notes[-1].get("id") if notes else None
 
 # ── HTML/JS ビューア埋め込み──────────────────
 html_code = f"""
 <style>
-  #viewer img, #viewer video {{ width:100%; height:auto; }}
-  #snippet-area {{ padding:8px; max-height:30vh; overflow:auto; color:#000; font-size:14px; background:#fff; }}
+  #viewer img, #viewer video {{ width:100%; height:auto; display:block; margin:0 auto; }}
+  #snippet-area {{ padding:8px; color:#000; font-size:14px; white-space: pre-wrap; background:#fff; }}
 </style>
-<div id="viewer" style="width:100%;background:#000;overflow:hidden;touch-action:pan-y;"></div>
+<div id=\"viewer\"></div>
 <div id=\"snippet-area\"></div>
 <script>
 const apiUrl = \"{api_url}\";
@@ -110,43 +94,26 @@ const viewer      = document.getElementById(\"viewer\");
 const snippetArea = document.getElementById(\"snippet-area\");
 let idx = 0;
 
-function makeMedia(item) {{
-  if (item.type.startsWith(\"video\")) {{
-    const wrapper = document.createElement(\"div\");
-    const v = document.createElement(\"video\");
-    v.src         = item.url;
-    v.controls    = true;
-    v.autoplay    = true;
-    v.loop        = true;
-    v.muted       = true;
-    v.playsInline = true;
-    v.crossOrigin = \"anonymous\";
-    wrapper.appendChild(v);
-
-    const link = document.createElement(\"a\");
-    link.href        = item.url;
-    link.textContent = item.url;
-    link.target      = \"_blank\";
-    link.rel         = \"noopener noreferrer\";
-    link.style.display = \"block\";
-    link.style.color   = \"#00f\";
-    link.style.margin  = \"8px 0\";
-    wrapper.appendChild(link);
-
-    return wrapper;
-  }} else {{
-    const img = document.createElement(\"img\");
-    img.src            = item.url;
-    return img;
-  }}
-}}
-
 function render() {{
-  viewer.innerHTML      = \"\";
-  snippetArea.textContent = \"\";
-  const el = makeMedia(medias[idx]);
+  const item = medias[idx];
+  viewer.innerHTML = '';
+  let el;
+  if (item.type.startsWith(\"video\")) {{
+    el = document.createElement(\"video\");
+    el.src = item.url;
+    el.controls = true;
+    el.autoplay = true;
+    el.loop = true;
+    el.muted = true;
+    el.playsInline = true;
+    el.setAttribute(\"playsinline\", \"\");
+    el.crossOrigin = \"anonymous\";
+  }} else {{
+    el = document.createElement(\"img\");
+    el.src = item.url;
+  }}
   viewer.appendChild(el);
-  snippetArea.textContent = medias[idx].text || \"\";
+  snippetArea.textContent = item.text;
 }}
 
 async function loadMore() {{
@@ -156,22 +123,17 @@ async function loadMore() {{
   const notes = await res.json(); if (!notes.length) return;
   untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
-    const rawText = note.text || (note.renote?note.renote.text:"");
-    const snippet = rawText.split("\n").slice(0,3).join("\n");
-    note.files.forEach(f => {{ if (f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{ url: f.url, type: f.type, text: snippet }}); }});
-    if (note.renote) note.renote.files.forEach(f => {{ if (f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{ url: f.url, type: f.type, text: snippet }}); }});
+    const raw = note.text || note.renote?.text || "";
+    const sn = raw.split("\n").slice(0,3).join("\n");
+    note.files.forEach(f => {{ if (f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{ url:f.url, type:f.type, text:sn }}); }});
   }});
 }}
 
-// スワイプ／ダブルタップ設定
 let startX = 0;
 viewer.addEventListener(\"touchstart\", e => {{ startX = e.changedTouches[0].screenX; }});
 viewer.addEventListener(\"touchend\", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
-  if (Math.abs(diff) > 50) {{
-    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
-    if (idx === medias.length - 1) await loadMore(); render();
-  }}
+  if (Math.abs(diff) > 50) {{ idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length; if (idx === medias.length - 1) await loadMore(); render(); }}
 }});
 viewer.addEventListener(\"dblclick\", e => {{
   const x = e.clientX;
@@ -179,7 +141,6 @@ viewer.addEventListener(\"dblclick\", e => {{
   render();
 }});
 
-// 初期描画
 render();
 </script>
 """
@@ -189,4 +150,5 @@ components.html(
     height=800,
     scrolling=False
 )
+
 
