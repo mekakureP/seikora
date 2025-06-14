@@ -15,7 +15,7 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey メディアビューア")
 
-# ── API トークン取得（環境変数 → st.secrets → 手入力）─────────────────
+# ── API トークン取得──────────────────
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
 if not API_TOKEN:
     API_TOKEN = st.text_input("Misskey API トークンを入力してください", type="password")
@@ -23,14 +23,14 @@ if not API_TOKEN:
         st.warning("API トークンが設定されていません。入力が必要です。")
         st.stop()
 
-# ── 取得モード選択 ─────────────────────────
+# ── 取得モード選択──────────────────
 mode = st.radio("取得モードを選択", ("ローカルTL", "ユーザー指定TL"), index=0)
 username = None
 if mode == "ユーザー指定TL":
     raw_user = st.text_input("表示するユーザー名を指定（@以下）", value="")
     username = raw_user.lstrip("@") or None
 
-# ── API 呼び出し関数定義 ─────────────────────────
+# ── API 呼び出し関数──────────────────
 @st.cache_data(ttl=60)
 def fetch_batch(token: str, limit: int, until_id: str | None = None):
     payload = {"i": token, "limit": limit, "withFiles": True}
@@ -48,14 +48,15 @@ def fetch_user_id(token: str, username: str) -> str:
 
 @st.cache_data(ttl=60)
 def fetch_user_notes(token: str, user_id: str, limit: int, until_id: str | None = None):
-    payload = {"i": token, "userId": user_id, "limit": limit, "includeMyRenotes": True, "withFiles": True}
+    payload = {"i": token, "userId": user_id, "limit": limit,
+               "includeMyRenotes": True, "withFiles": True}
     if until_id:
         payload["untilId"] = until_id
     res = requests.post(USER_API_URL, json=payload)
     res.raise_for_status()
     return res.json()
 
-# ── 初回ノート取得 ─────────────────────────
+# ── 初回ノート取得──────────────────
 if mode == "ユーザー指定TL" and username:
     user_id = fetch_user_id(API_TOKEN, username)
     notes = fetch_user_notes(API_TOKEN, user_id, BATCH_SIZE)
@@ -64,16 +65,20 @@ else:
     notes = fetch_batch(API_TOKEN, BATCH_SIZE)
     api_url = LOCAL_API_URL
 
-# ── メディアリスト生成（text フィールド追加） ─────────────────────────
+# ── メディア＋本文スニペット準備──────────────────
 initial_media = []
 for note in notes:
-    # ノート本文を renote も含め 3 行以内で抽出
     raw_text = note.get("text") or note.get("renote", {}).get("text", "") or ""
     lines = raw_text.split("\n")
     snippet = "\n".join(lines[:3])
+    # 本文は共通
     for f in note.get("files", []):
         if f.get("type", "").startswith(("image", "video")):
-            initial_media.append({"url": f["url"], "type": f["type"], "text": snippet})
+            initial_media.append({
+                "url": f["url"],
+                "type": f["type"],
+                "text": snippet
+            })
     ren = note.get("renote")
     if ren:
         raw_text = ren.get("text", "")
@@ -81,27 +86,28 @@ for note in notes:
         snippet = "\n".join(lines[:3])
         for f in ren.get("files", []):
             if f.get("type", "").startswith(("image", "video")):
-                initial_media.append({"url": f["url"], "type": f["type"], "text": snippet})
+                initial_media.append({
+                    "url": f["url"],
+                    "type": f["type"],
+                    "text": snippet
+                })
 initial_until_id = notes[-1].get("id") if notes else None
 
-# ── HTML/JS ビューア埋め込み ─────────────────────────
+# ── HTML/JS ビューア埋め込み──────────────────
 html_code = f"""
-<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
+<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:70vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
+<div id=\"snippet-area\" style=\"padding:8px;max-height:30vh;overflow:auto;color:#000;font-size:14px;background:#fff;\"></div>
 <script>
 const apiUrl = \"{api_url}\";
 const token = \"{API_TOKEN}\";
 const batchSize = {BATCH_SIZE};
 let untilId = {json.dumps(initial_until_id)};
 let medias = {json.dumps(initial_media)};
-const container = document.getElementById(\"viewer\");
+const viewer = document.getElementById(\"viewer\");
+const snippetArea = document.getElementById(\"snippet-area\");
 let idx = 0;
 
-function makeElement(item) {{
-  const wrapper = document.createElement(\"div\");
-  wrapper.style.display = \"flex\";
-  wrapper.style.flexDirection = \"column\";
-  wrapper.style.alignItems = \"center\";
-
+function makeMedia(item) {{
   if (item.type.startsWith(\"video\")) {{
     const v = document.createElement(\"video\");
     v.src = item.url;
@@ -114,44 +120,24 @@ function makeElement(item) {{
     v.setAttribute(\"x-webkit-playsinline\", \"\");
     v.crossOrigin = \"anonymous\";
     v.style.maxWidth = \"100%\";
-    v.style.maxHeight = \"80vh\";
+    v.style.maxHeight = \"100%\";
     v.style.objectFit = \"contain\";
-    wrapper.appendChild(v);
+    return v;
   }} else {{
     const img = document.createElement(\"img\");
     img.src = item.url;
     img.style.maxWidth = \"100%\";
-    img.style.maxHeight = \"80vh\";
+    img.style.maxHeight = \"100%\";
     img.style.objectFit = \"contain\";
-    wrapper.appendChild(img);
+    return img;
   }}
-  // URLリンク
-  const link = document.createElement(\"a\");
-  link.href = item.url;
-  link.textContent = item.url;
-  link.target = \"_blank\";
-  link.rel = \"noopener noreferrer\";
-  link.style.color = \"#fff\";
-  link.style.marginTop = \"8px\";
-  wrapper.appendChild(link);
-  
-  // 本文スニペット
-  const p = document.createElement(\"p\");
-  p.textContent = item.text || \"\";
-  p.style.color = \"#fff\";
-  p.style.maxWidth = \"90%\";
-  p.style.marginTop = \"4px\";
-  wrapper.appendChild(p);
-
-  return wrapper;
 }}
 
-function renderAll() {{
-  container.innerHTML = \"\";
-  medias.forEach(item => container.appendChild(makeElement(item)));
-}}
-function showIdx() {{
-  Array.from(container.children).forEach((el,i) => el.style.display = i===idx?\"block\":\"none\");
+function render() {{
+  viewer.innerHTML = \"\";
+  const mediaEl = makeMedia(medias[idx]);
+  viewer.appendChild(mediaEl);
+  snippetArea.textContent = medias[idx].text || \"\";
 }}
 
 async function loadMore() {{
@@ -181,31 +167,28 @@ async function loadMore() {{
       }});
     }}
   }});
-  renderAll();
 }}
 
-// 初期描画
-renderAll(); showIdx();
-let startX = 0;
-container.addEventListener(\"touchstart\", e => {{ startX = e.changedTouches[0].screenX; }});
-container.addEventListener(\"touchend\", async e => {{
+// イベント設定
+viewer.addEventListener(\"touchstart\", e => {{ startX = e.changedTouches[0].screenX; }});
+viewer.addEventListener(\"touchend\", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
   if (Math.abs(diff) > 50) {{
     idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
-    showIdx();
     if (idx === medias.length - 1) await loadMore();
+    render();
   }}
 }});
-
-// ダブルタップ操作
-container.addEventListener(\"dblclick\", e => {{
+viewer.addEventListener(\"dblclick\", e => {{
   const x = e.clientX;
-  const w = window.innerWidth;
-  const children = container.children;
-  children[idx].style.display = \"none\";
-  if (x < w / 2) {{ idx = (idx - 1 + children.length) % children.length; }} else {{ idx = (idx + 1) % children.length; }}
-  children[idx].style.display = \"block\";
+  idx = x < window.innerWidth/2
+    ? (idx - 1 + medias.length) % medias.length
+    : (idx + 1) % medias.length;
+  render();
 }});
+
+// 初期描画
+render();
 </script>
 """
 
