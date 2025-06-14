@@ -48,7 +48,13 @@ def fetch_user_id(token: str, username: str) -> str:
 
 @st.cache_data(ttl=60)
 def fetch_user_notes(token: str, user_id: str, limit: int, until_id: str | None = None):
-    payload = {"i": token, "userId": user_id, "limit": limit, "includeMyRenotes": True, "withFiles": True}
+    payload = {
+        "i": token,
+        "userId": user_id,
+        "limit": limit,
+        "includeMyRenotes": True,
+        "withFiles": True
+    }
     if until_id:
         payload["untilId"] = until_id
     res = requests.post(USER_API_URL, json=payload)
@@ -64,17 +70,34 @@ else:
     notes = fetch_batch(API_TOKEN, BATCH_SIZE)
     api_url = LOCAL_API_URL
 
-# ── メディアリスト生成（name フィールド追加） ─────────────────────────
+# ── メディアリスト生成（name, text フィールド追加） ─────────────────────────
 initial_media = []
 for note in notes:
+    # ノート本文を3行以内にスニペットとして抽出
+    text = note.get("text", "")
+    lines = text.split("\n")
+    snippet = "\n".join(lines[:3])
     for f in note.get("files", []):
         if f.get("type", "").startswith(("image", "video")):
-            initial_media.append({"url": f["url"], "name": f.get("name", ""), "type": f["type"]})
+            initial_media.append({
+                "url": f["url"],
+                "name": f.get("name", ""),
+                "type": f["type"],
+                "text": snippet
+            })
     ren = note.get("renote")
     if ren:
+        text = ren.get("text", "")
+        lines = text.split("\n")
+        snippet = "\n".join(lines[:3])
         for f in ren.get("files", []):
             if f.get("type", "").startswith(("image", "video")):
-                initial_media.append({"url": f["url"], "name": f.get("name", ""), "type": f["type"]})
+                initial_media.append({
+                    "url": f["url"],
+                    "name": f.get("name", ""),
+                    "type": f["type"],
+                    "text": snippet
+                })
 initial_until_id = notes[-1].get("id") if notes else None
 
 # ── HTML/JS ビューア埋め込み ─────────────────────────
@@ -90,12 +113,12 @@ const container = document.getElementById("viewer");
 let idx = 0;
 
 function makeElement(item) {{
-  if (item.type.startsWith("video")) {{
-    const wrapper = document.createElement("div");
-    wrapper.style.display = "flex";
-    wrapper.style.flexDirection = "column";
-    wrapper.style.alignItems = "center";
+  const wrapper = document.createElement("div");
+  wrapper.style.display = "flex";
+  wrapper.style.flexDirection = "column";
+  wrapper.style.alignItems = "center";
 
+  if (item.type.startsWith("video")) {{
     const v = document.createElement("video");
     v.src            = item.url;
     v.controls       = true;
@@ -114,21 +137,29 @@ function makeElement(item) {{
     const link = document.createElement("a");
     link.href         = item.url;
     link.textContent  = item.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
+    link.target       = "_blank";
+    link.rel          = "noopener noreferrer";
     link.style.color  = "#fff";
     link.style.marginTop = "8px";
     wrapper.appendChild(link);
 
-    return wrapper;
   }} else {{
     const img = document.createElement("img");
     img.src            = item.url;
     img.style.maxWidth  = "100%";
     img.style.maxHeight = "100%";
     img.style.objectFit = "contain";
-    return img;
+    wrapper.appendChild(img);
   }}
+
+  const p = document.createElement("p");
+  p.textContent = item.text || "";
+  p.style.color = "#fff";
+  p.style.maxWidth = "90%";
+  p.style.marginTop = "4px";
+  wrapper.appendChild(p);
+
+  return wrapper;
 }}
 
 function renderAll() {{ container.innerHTML = ""; medias.forEach(item => container.appendChild(makeElement(item))); }}
@@ -141,8 +172,8 @@ async function loadMore() {{
   const notes = await res.json(); if (!notes.length) return;
   untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
-    note.files.forEach(f => {{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,name:f.name,type:f.type}}); }});
-    if(note.renote) note.renote.files.forEach(f => {{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,name:f.name,type:f.type}}); }});
+    note.files.forEach(f => {{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,name:f.name,type:f.type,text:item.text}}); }});
+    if(note.renote) note.renote.files.forEach(f => {{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,name:f.name,type:f.type,text:item.text}}); }});
   }});
   renderAll();
 }}
@@ -178,9 +209,3 @@ components.html(
     height=800,
     scrolling=False
 )
-
-
-
-
-
-
