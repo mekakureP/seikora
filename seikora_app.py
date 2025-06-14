@@ -114,7 +114,8 @@ function makeElement(item) {{
     const link = document.createElement("a");
     link.href         = item.url;
     link.textContent  = item.url;
-    link.target       = "_blank";
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
     link.style.color  = "#fff";
     link.style.marginTop = "8px";
     wrapper.appendChild(link);
@@ -173,6 +174,7 @@ container.addEventListener("dblclick", e => {{
 )
 
 components.html(html_code, height=800, scrolling=False)
+
 
 
 
