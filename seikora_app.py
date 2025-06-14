@@ -48,13 +48,7 @@ def fetch_user_id(token: str, username: str) -> str:
 
 @st.cache_data(ttl=60)
 def fetch_user_notes(token: str, user_id: str, limit: int, until_id: str | None = None):
-    payload = {
-        "i": token,
-        "userId": user_id,
-        "limit": limit,
-        "includeMyRenotes": True,
-        "withFiles": True
-    }
+    payload = {"i": token, "userId": user_id, "limit": limit, "includeMyRenotes": True, "withFiles": True}
     if until_id:
         payload["untilId"] = until_id
     res = requests.post(USER_API_URL, json=payload)
@@ -70,142 +64,154 @@ else:
     notes = fetch_batch(API_TOKEN, BATCH_SIZE)
     api_url = LOCAL_API_URL
 
-# ── メディアリスト生成（name, text フィールド追加） ─────────────────────────
+# ── メディアリスト生成（text フィールド追加） ─────────────────────────
 initial_media = []
 for note in notes:
-    # ノート本文を3行以内にスニペットとして抽出
-    text = note.get("text", "")
-    lines = text.split("\n")
+    # ノート本文を renote も含め 3 行以内で抽出
+    raw_text = note.get("text") or note.get("renote", {}).get("text", "") or ""
+    lines = raw_text.split("\n")
     snippet = "\n".join(lines[:3])
     for f in note.get("files", []):
         if f.get("type", "").startswith(("image", "video")):
-            initial_media.append({
-                "url": f["url"],
-                "name": f.get("name", ""),
-                "type": f["type"],
-                "text": snippet
-            })
+            initial_media.append({"url": f["url"], "type": f["type"], "text": snippet})
     ren = note.get("renote")
     if ren:
-        text = ren.get("text", "")
-        lines = text.split("\n")
+        raw_text = ren.get("text", "")
+        lines = raw_text.split("\n")
         snippet = "\n".join(lines[:3])
         for f in ren.get("files", []):
             if f.get("type", "").startswith(("image", "video")):
-                initial_media.append({
-                    "url": f["url"],
-                    "name": f.get("name", ""),
-                    "type": f["type"],
-                    "text": snippet
-                })
+                initial_media.append({"url": f["url"], "type": f["type"], "text": snippet})
 initial_until_id = notes[-1].get("id") if notes else None
 
 # ── HTML/JS ビューア埋め込み ─────────────────────────
-html_code = '''
-<div id="viewer" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;"></div>
+html_code = f"""
+<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
 <script>
-const apiUrl    = "{api_url}";
-const token     = "{api_token}";
-const batchSize = {batch_size};
-let untilId     = {until_id};
-let medias      = {media_list};
-const container = document.getElementById("viewer");
+const apiUrl = \"{api_url}\";
+const token = \"{API_TOKEN}\";
+const batchSize = {BATCH_SIZE};
+let untilId = {json.dumps(initial_until_id)};
+let medias = {json.dumps(initial_media)};
+const container = document.getElementById(\"viewer\");
 let idx = 0;
 
 function makeElement(item) {{
-  const wrapper = document.createElement("div");
-  wrapper.style.display = "flex";
-  wrapper.style.flexDirection = "column";
-  wrapper.style.alignItems = "center";
+  const wrapper = document.createElement(\"div\");
+  wrapper.style.display = \"flex\";
+  wrapper.style.flexDirection = \"column\";
+  wrapper.style.alignItems = \"center\";
 
-  if (item.type.startsWith("video")) {{
-    const v = document.createElement("video");
-    v.src            = item.url;
-    v.controls       = true;
-    v.autoplay       = true;
-    v.loop           = true;
-    v.muted          = true;
-    v.playsInline    = true;
-    v.setAttribute("playsinline", "");
-    v.setAttribute("x-webkit-playsinline", "");
-    v.crossOrigin    = "anonymous";
-    v.style.maxWidth  = "100%";
-    v.style.maxHeight = "80vh";  // メディアの高さを抑え、本文表示スペースを確保
-    v.style.objectFit = "contain";
+  if (item.type.startsWith(\"video\")) {{
+    const v = document.createElement(\"video\");
+    v.src = item.url;
+    v.controls = true;
+    v.autoplay = true;
+    v.loop = true;
+    v.muted = true;
+    v.playsInline = true;
+    v.setAttribute(\"playsinline\", \"\");
+    v.setAttribute(\"x-webkit-playsinline\", \"\");
+    v.crossOrigin = \"anonymous\";
+    v.style.maxWidth = \"100%\";
+    v.style.maxHeight = \"80vh\";
+    v.style.objectFit = \"contain\";
     wrapper.appendChild(v);
-
-    const link = document.createElement("a");
-    link.href         = item.url;
-    link.textContent  = item.url;
-    link.target       = "_blank";
-    link.rel          = "noopener noreferrer";
-    link.style.color  = "#fff";
-    link.style.marginTop = "8px";
-    wrapper.appendChild(link);
-
   }} else {{
-    const img = document.createElement("img");
-    img.src            = item.url;
-    img.style.maxWidth  = "100%";
-    img.style.maxHeight = "100%";
-    img.style.objectFit = "contain";
+    const img = document.createElement(\"img\");
+    img.src = item.url;
+    img.style.maxWidth = \"100%\";
+    img.style.maxHeight = \"80vh\";
+    img.style.objectFit = \"contain\";
     wrapper.appendChild(img);
   }}
-
-  const p = document.createElement("p");
-  p.textContent = item.text || "";
-  p.style.color = "#fff";
-  p.style.maxWidth = "90%";
-  p.style.marginTop = "4px";
+  // URLリンク
+  const link = document.createElement(\"a\");
+  link.href = item.url;
+  link.textContent = item.url;
+  link.target = \"_blank\";
+  link.rel = \"noopener noreferrer\";
+  link.style.color = \"#fff\";
+  link.style.marginTop = \"8px\";
+  wrapper.appendChild(link);
+  
+  // 本文スニペット
+  const p = document.createElement(\"p\");
+  p.textContent = item.text || \"\";
+  p.style.color = \"#fff\";
+  p.style.maxWidth = \"90%\";
+  p.style.marginTop = \"4px\";
   wrapper.appendChild(p);
 
   return wrapper;
 }}
 
-function renderAll() {{ container.innerHTML = ""; medias.forEach(item => container.appendChild(makeElement(item))); }}
-function showIdx() {{ Array.from(container.children).forEach((el,i) => el.style.display = i===idx?"block":"none"); }}
+function renderAll() {{
+  container.innerHTML = \"\";
+  medias.forEach(item => container.appendChild(makeElement(item)));
+}}
+function showIdx() {{
+  Array.from(container.children).forEach((el,i) => el.style.display = i===idx?\"block\":\"none\");
+}}
 
 async function loadMore() {{
   const payload = {{ i: token, limit: batchSize }};
   if (untilId) payload.untilId = untilId;
-  const res = await fetch(apiUrl, {{ method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(payload) }});
-  const notes = await res.json(); if (!notes.length) return;
+  const res = await fetch(apiUrl, {{ method: \"POST\", headers: {{\"Content-Type\":\"application/json\"}}, body: JSON.stringify(payload) }});
+  const notes = await res.json();
+  if (!notes.length) return;
   untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
-    note.files.forEach(f => {{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,name:f.name,type:f.type,text:item.text}}); }});
-    if(note.renote) note.renote.files.forEach(f => {{ if(f.type.startsWith("image")||f.type.startsWith("video")) medias.push({{url:f.url,name:f.name,type:f.type,text:item.text}}); }});
+    let rawText = note.text || (note.renote?note.renote.text: \"\");
+    let lines = rawText.split(\"\\n\");
+    let snippet = lines.slice(0,3).join(\"\\n\");
+    note.files.forEach(f => {{
+      if (f.type.startsWith(\"image\") || f.type.startsWith(\"video\")) {{
+        medias.push({{ url: f.url, type: f.type, text: snippet }});
+      }}
+    }});
+    if (note.renote) {{
+      let rText = note.renote.text || \"\";
+      let rLines = rText.split(\"\\n\");
+      let rSnippet = rLines.slice(0,3).join(\"\\n\");
+      note.renote.files.forEach(f => {{
+        if (f.type.startsWith(\"image\") || f.type.startsWith(\"video\")) {{
+          medias.push({{ url: f.url, type: f.type, text: rSnippet }});
+        }}
+      }});
+    }}
   }});
   renderAll();
 }}
 
 // 初期描画
-renderAll(); showIdx(); let startX=0;
-container.addEventListener("touchstart", e => {{ startX = e.changedTouches[0].screenX; }});
-container.addEventListener("touchend", async e => {{
+renderAll(); showIdx();
+let startX = 0;
+container.addEventListener(\"touchstart\", e => {{ startX = e.changedTouches[0].screenX; }});
+container.addEventListener(\"touchend\", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
-  if (Math.abs(diff) > 50) {{ idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length; showIdx(); if (idx === medias.length - 1) await loadMore(); }}
+  if (Math.abs(diff) > 50) {{
+    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
+    showIdx();
+    if (idx === medias.length - 1) await loadMore();
+  }}
 }});
 
 // ダブルタップ操作
-container.addEventListener("dblclick", e => {{
+container.addEventListener(\"dblclick\", e => {{
   const x = e.clientX;
   const w = window.innerWidth;
   const children = container.children;
-  children[idx].style.display = "none";
+  children[idx].style.display = \"none\";
   if (x < w / 2) {{ idx = (idx - 1 + children.length) % children.length; }} else {{ idx = (idx + 1) % children.length; }}
-  children[idx].style.display = "block";
+  children[idx].style.display = \"block\";
 }});
 </script>
-'''.format(
-    api_url=api_url,
-    api_token=API_TOKEN,
-    batch_size=BATCH_SIZE,
-    until_id=json.dumps(initial_until_id),
-    media_list=json.dumps(initial_media)
-)
+"""
 
 components.html(
     html_code,
     height=800,
     scrolling=False
 )
+
