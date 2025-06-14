@@ -106,12 +106,10 @@ function makeElement(item) {{
     // 読み込み完了後に再生＆表示
     v.addEventListener(\"loadedmetadata\", () => {{
       v.play().catch(() => {{}});
-      v.style.display = \"block\";
     }});
     v.style.maxWidth  = \"100%\";
     v.style.maxHeight = \"100%\";
     v.style.objectFit = \"contain\";
-    v.style.display   = \"none\";
     return v;
   }} else {{
     const img = document.createElement(\"img\");
