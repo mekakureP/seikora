@@ -15,7 +15,6 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey メディアビューア")
 
-
 # ── API トークン取得（環境変数 → st.secrets → 手入力）─────────────────
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
 if not API_TOKEN:
@@ -91,31 +90,36 @@ const container = document.getElementById(\"viewer\");
 let idx = 0;
 
 function makeElement(item) {{
-  if (item.type.startsWith("video")) {{
-    const v = document.createElement("video");
-    // ここを item.url のみを渡すように変更
-    v.src           = item.url;
-    v.controls      = true;
-    v.autoplay      = true;
-    v.loop          = true;
-    v.muted         = true;
-    v.playsInline   = true;
-    v.setAttribute("playsinline", "");
-    v.setAttribute("x-webkit-playsinline", "");
-    v.preload       = "metadata";
-    v.crossOrigin   = "anonymous";
-    v.style.maxWidth  = "100%";
-    v.style.maxHeight = "100%";
-    v.style.objectFit = "contain";
-    v.style.display   = "none";
+  if (item.type.startsWith(\"video\")) {{
+    const v = document.createElement(\"video\");
+    // 先読みを自動化
+    v.setAttribute(\"preload\", \"auto\");
+    v.setAttribute(\"autoplay\", \"\");
+    v.setAttribute(\"loop\", \"\");
+    v.setAttribute(\"muted\", \"\");
+    v.setAttribute(\"playsinline\", \"\");
+    v.setAttribute(\"x-webkit-playsinline\", \"\");
+    v.setAttribute(\"crossorigin\", \"anonymous\");
+    // src セット & バッファリング開始
+    v.src = item.url;
+    v.load();
+    // 読み込み完了後に再生＆表示
+    v.addEventListener(\"loadedmetadata\", () => {{
+      v.play().catch(() => {{}});
+      v.style.display = \"block\";
+    }});
+    v.style.maxWidth  = \"100%\";
+    v.style.maxHeight = \"100%\";
+    v.style.objectFit = \"contain\";
+    v.style.display   = \"none\";
     return v;
- }} else {{
-    const img = document.createElement("img");
+  }} else {{
+    const img = document.createElement(\"img\");
     img.src             = item.url;
-    img.style.maxWidth  = "100%";
-    img.style.maxHeight = "100%";
-    img.style.objectFit = "contain";
-    img.style.display   = "none";
+    img.style.maxWidth  = \"100%\";
+    img.style.maxHeight = \"100%\";
+    img.style.objectFit = \"contain\";
+    img.style.display   = \"none\";
     return img;
   }}
 }}
