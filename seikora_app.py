@@ -93,9 +93,11 @@ function makeElement(item) {{
   if (item.type.startsWith(\"video\")) {{
     const v = document.createElement(\"video\");
     // 拡張子付き URL を組み立て
-    const proxyUrl = item.name
-      ? `${{item.url}}/${{encodeURIComponent(item.name)}}`
-      : item.url;
+    // 拡張子が item.url に含まれていればそのまま、含まれなければ名前を付加
+    const hasExt = /\.(mp4|webm|mov|m3u8)$/i.test(item.url);
+    const proxyUrl = hasExt
+        ? item.url
+        : (item.name ? `${item.url}/${encodeURIComponent(item.name)}` : item.url);
     v.src           = proxyUrl;
     v.controls      = true;
     v.autoplay      = true;
@@ -159,6 +161,5 @@ container.addEventListener(\"dblclick\", e => {{
 """
 
 components.html(html_code, height=800, scrolling=False)
-
 
 
