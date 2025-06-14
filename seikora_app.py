@@ -15,22 +15,16 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey メディアビューア")
 
-# ── API トークン取得（環境変数 → st.secrets → 手入力フォールバック）─────────────────
+# ── API トークン取得（環境変数 → st.secrets → 手入力）─────────────────
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
 if not API_TOKEN:
-    API_TOKEN = st.text_input(
-        "Misskey API トークンを入力してください", type="password"
-    )
+    API_TOKEN = st.text_input("Misskey API トークンを入力してください", type="password")
     if not API_TOKEN:
         st.warning("API トークンが設定されていません。入力が必要です。")
         st.stop()
 
 # ── 取得モード選択 ─────────────────────────
-mode = st.radio(
-    "取得モードを選択",
-    ("ローカルTL", "ユーザー指定TL"),
-    index=0
-)
+mode = st.radio("取得モードを選択", ("ローカルTL", "ユーザー指定TL"), index=0)
 username = None
 if mode == "ユーザー指定TL":
     raw_user = st.text_input("表示するユーザー名を指定（@以下）", value="")
@@ -48,17 +42,13 @@ def fetch_batch(token: str, limit: int, until_id: str | None = None):
 
 @st.cache_data(ttl=300)
 def fetch_user_id(token: str, username: str) -> str:
-    res = requests.post(
-        SHOW_USER_URL,
-        json={"i": token, "username": username},
-    )
+    res = requests.post(SHOW_USER_URL, json={"i": token, "username": username})
     res.raise_for_status()
     return res.json().get("id")
 
 @st.cache_data(ttl=60)
 def fetch_user_notes(token: str, user_id: str, limit: int, until_id: str | None = None):
-    payload = {"i": token, "userId": user_id, "limit": limit,
-               "includeMyRenotes": True, "withFiles": True}
+    payload = {"i": token, "userId": user_id, "limit": limit, "includeMyRenotes": True, "withFiles": True}
     if until_id:
         payload["untilId"] = until_id
     res = requests.post(USER_API_URL, json=payload)
@@ -79,26 +69,17 @@ initial_media = []
 for note in notes:
     for f in note.get("files", []):
         if f.get("type", "").startswith(("image", "video")):
-            initial_media.append({
-                "url":  f["url"],
-                "name": f.get("name", ""),
-                "type": f["type"]
-            })
+            initial_media.append({"url": f["url"], "name": f.get("name", ""), "type": f["type"]})
     ren = note.get("renote")
     if ren:
         for f in ren.get("files", []):
             if f.get("type", "").startswith(("image", "video")):
-                initial_media.append({
-                    "url":  f["url"],
-                    "name": f.get("name", ""),
-                    "type": f["type"]
-                })
+                initial_media.append({"url": f["url"], "name": f.get("name", ""), "type": f["type"]})
 initial_until_id = notes[-1].get("id") if notes else None
 
 # ── HTML/JS ビューア埋め込み ─────────────────────────
 html_code = f"""
-<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;\
-background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
+<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
 <script>
 const apiUrl    = \"{api_url}\";
 const token     = \"{API_TOKEN}\";
@@ -112,7 +93,9 @@ function makeElement(item) {{
   if (item.type.startsWith(\"video\")) {{
     const v = document.createElement(\"video\");
     // 拡張子付き URL を組み立て
-    const proxyUrl = `${{item.url}}/${{encodeURIComponent(item.name)}}`;
+    const proxyUrl = item.name
+      ? `${{item.url}}/${{encodeURIComponent(item.name)}}`
+      : item.url;
     v.src           = proxyUrl;
     v.controls      = true;
     v.autoplay      = true;
@@ -176,5 +159,6 @@ container.addEventListener(\"dblclick\", e => {{
 """
 
 components.html(html_code, height=800, scrolling=False)
+
 
 
