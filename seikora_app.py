@@ -99,21 +99,25 @@ let medias      = {json.dumps(initial_media)};
 const container = document.getElementById("viewer");
 let idx = 0;
 
-function makeElement(item) {{
-  if (item.type.startsWith("video")) {{
+function makeElement(item) {
+  if (item.type.startsWith("video")) {
     const v = document.createElement("video");
-    v.src        = item.url;
-    v.controls   = true;
-    v.autoplay   = true;
-    v.loop       = true;
-    v.muted      = true;
-    v.playsInline= true;
-    v.style.maxWidth  = "100%";
-    v.style.maxHeight = "100%";
-    v.style.objectFit = "contain";
-    v.style.display   = "none";
+    v.src               = item.url;
+    v.controls          = true;
+    v.autoplay          = true;
+    v.loop              = true;
+    v.muted             = true;
+    v.playsInline       = true;
+    v.setAttribute("playsinline", "");
+    v.setAttribute("x-webkit-playsinline", "");
+    v.preload           = "metadata";
+    v.crossOrigin       = "anonymous";
+    v.style.maxWidth    = "100%";
+    v.style.maxHeight   = "100%";
+    v.style.objectFit   = "contain";
+    v.style.display     = "none";
     return v;
-  }} else {{
+  } else {
     const img = document.createElement("img");
     img.src             = item.url;
     img.style.maxWidth  = "100%";
@@ -121,8 +125,8 @@ function makeElement(item) {{
     img.style.objectFit = "contain";
     img.style.display   = "none";
     return img;
-  }}
-}}
+  }
+}
 
 function renderAll() {{ container.innerHTML = ""; medias.forEach(item => container.appendChild(makeElement(item))); }}
 function showIdx() {{ Array.from(container.children).forEach((el,i) => el.style.display = i===idx?"block":"none"); }}
@@ -172,4 +176,5 @@ container.addEventListener("dblclick", e => {{
 """
 
 components.html(html_code, height=800, scrolling=False)
+
 
