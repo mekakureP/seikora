@@ -95,9 +95,12 @@ function makeElement(item) {{
     // 拡張子付き URL を組み立て
     // 拡張子が item.url に含まれていればそのまま、含まれなければ名前を付加
     const hasExt = /\.(mp4|webm|mov|m3u8)$/i.test(item.url);
+    // 拡張子が item.url に含まれていればそのまま、含まれなければ名前を付加
     const proxyUrl = hasExt
         ? item.url
-        : (item.name ? `${item.url}/${encodeURIComponent(item.name)}` : item.url);
+        : (item.name
+            ? `\${{item.url}}/\${{encodeURIComponent(item.name)}}`
+            : item.url);
     v.src           = proxyUrl;
     v.controls      = true;
     v.autoplay      = true;
@@ -161,5 +164,6 @@ container.addEventListener(\"dblclick\", e => {{
 """
 
 components.html(html_code, height=800, scrolling=False)
+
 
 
