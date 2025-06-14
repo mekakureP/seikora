@@ -74,17 +74,25 @@ else:
     notes = fetch_batch(API_TOKEN, BATCH_SIZE)
     api_url = LOCAL_API_URL
 
-# ── メディアリスト生成（オリジナル＋リノート） ─────────────────────────
+# ── メディアリスト生成（name フィールド追加, オリジナル＋リノート） ─────────────────────────
 initial_media = []
 for note in notes:
     for f in note.get("files", []):
         if f.get("type", "").startswith(("image", "video")):
-            initial_media.append({"url": f["url"], "type": f["type"]})
+            initial_media.append({
+                "url":  f["url"],
+                "name": f.get("name", ""),
+                "type": f["type"]
+            })
     ren = note.get("renote")
     if ren:
         for f in ren.get("files", []):
             if f.get("type", "").startswith(("image", "video")):
-                initial_media.append({"url": f["url"], "type": f["type"]})
+                initial_media.append({
+                    "url":  f["url"],
+                    "name": f.get("name", ""),
+                    "type": f["type"]
+                })
 initial_until_id = notes[-1].get("id") if notes else None
 
 # ── HTML/JS ビューア埋め込み ─────────────────────────
@@ -102,20 +110,22 @@ let idx = 0;
 function makeElement(item) {{
   if (item.type.startsWith(\"video\")) {{
     const v = document.createElement(\"video\");
-    v.src               = item.url;
-    v.controls          = true;
-    v.autoplay          = true;
-    v.loop              = true;
-    v.muted             = true;
-    v.playsInline       = true;
+    // 拡張子付き URL を組み立て
+    const proxyUrl = `${{item.url}}/${{encodeURIComponent(item.name)}}`;
+    v.src           = proxyUrl;
+    v.controls      = true;
+    v.autoplay      = true;
+    v.loop          = true;
+    v.muted         = true;
+    v.playsInline   = true;
     v.setAttribute(\"playsinline\", \"\");
     v.setAttribute(\"x-webkit-playsinline\", \"\");
-    v.preload           = \"metadata\";
-    v.crossOrigin       = \"anonymous\";
-    v.style.maxWidth    = \"100%\";
-    v.style.maxHeight   = \"100%\";
-    v.style.objectFit   = \"contain\";
-    v.style.display     = \"none\";
+    v.preload       = \"metadata\";
+    v.crossOrigin   = \"anonymous\";
+    v.style.maxWidth  = \"100%\";
+    v.style.maxHeight = \"100%\";
+    v.style.objectFit = \"contain\";
+    v.style.display   = \"none\";
     return v;
   }} else {{
     const img = document.createElement(\"img\");
@@ -138,37 +148,27 @@ async function loadMore() {{
   const notes = await res.json(); if (!notes.length) return;
   untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
-    note.files.forEach(f => {{ if(f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{url:f.url,type:f.type}}); }});
-    if(note.renote) note.renote.files.forEach(f => {{ if(f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{url:f.url,type:f.type}}); }});
+    note.files.forEach(f => {{ if(f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{url:f.url,name:f.name,type:f.type}}); }});
+    if(note.renote) note.renote.files.forEach(f => {{ if(f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{url:f.url,name:f.name,type:f.type}}); }});
   }});
   renderAll();
 }}
 
 // 初期描画
 renderAll(); showIdx(); let startX=0;
-
-// 1. スワイプ操作
 container.addEventListener(\"touchstart\", e => {{ startX = e.changedTouches[0].screenX; }});
 container.addEventListener(\"touchend\", async e => {{
   const diff = e.changedTouches[0].screenX - startX;
-  if (Math.abs(diff) > 50) {{
-    idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
-    showIdx();
-    if (idx === medias.length - 1) await loadMore();
-  }}
+  if (Math.abs(diff) > 50) {{ idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length; showIdx(); if (idx === medias.length - 1) await loadMore(); }}
 }});
 
-// 2. ダブルタップ（ダブルクリック）操作
+// ダブルタップ操作
 container.addEventListener(\"dblclick\", e => {{
   const x = e.clientX;
   const w = window.innerWidth;
   const children = container.children;
   children[idx].style.display = \"none\";
-  if (x < w / 2) {{
-    idx = (idx - 1 + children.length) % children.length;
-  }} else {{
-    idx = (idx + 1) % children.length;
-  }}
+  if (x < w / 2) {{ idx = (idx - 1 + children.length) % children.length; }} else {{ idx = (idx + 1) % children.length; }}
   children[idx].style.display = \"block\";
 }});
 </script>
