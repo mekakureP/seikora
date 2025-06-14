@@ -69,7 +69,7 @@ else:
 initial_media = []
 for note in notes:
     raw_text = note.get("text") or note.get("renote", {}).get("text", "") or ""
-    lines = raw_text.split("\n")
+    lines = raw_text.split("\\n")
     snippet = "\n".join(lines[:3])
     for f in note.get("files", []):
         if f.get("type", "").startswith(("image", "video")):
@@ -124,7 +124,7 @@ async function loadMore() {{
   untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
     const raw = note.text || note.renote?.text || "";
-    const sn = raw.split("\n").slice(0,3).join("\n");
+    const sn = raw.split("\\n").slice(0,3).join("\n");
     note.files.forEach(f => {{ if (f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{ url:f.url, type:f.type, text:sn }}); }});
   }});
 }}
