@@ -177,9 +177,9 @@ components.html(
     html_code,
     height=800,
     scrolling=False,
-    key="media_viewer",
-    unsafe_allow_html=True
+    key="media_viewer"
 )
+
 
 
 
