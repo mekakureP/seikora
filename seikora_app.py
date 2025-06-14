@@ -65,33 +65,27 @@ else:
     notes = fetch_batch(API_TOKEN, BATCH_SIZE)
     api_url = LOCAL_API_URL
 
-# ── メディア＋本文スニペット準備──────────────────
+# ── メディアリスト生成──────────────────
 initial_media = []
 for note in notes:
-    raw_text = note.get("text") or note.get("renote", {}).get("text", "") or ""
-    lines = raw_text.split("\\n")
-    snippet = "\n".join(lines[:3])
     for f in note.get("files", []):
         if f.get("type", "").startswith(("image", "video")):
-            initial_media.append({"url": f["url"], "type": f["type"], "text": snippet})
+            initial_media.append({"url": f["url"], "type": f["type"]})
 initial_until_id = notes[-1].get("id") if notes else None
 
 # ── HTML/JS ビューア埋め込み──────────────────
 html_code = f"""
 <style>
   #viewer img, #viewer video {{ width:100%; height:auto; display:block; margin:0 auto; }}
-  #snippet-area {{ padding:8px; color:#000; font-size:14px; white-space: pre-wrap; background:#fff; }}
 </style>
 <div id=\"viewer\"></div>
-<div id=\"snippet-area\"></div>
 <script>
 const apiUrl = \"{api_url}\";
 const token  = \"{API_TOKEN}\";
 const batchSize = {BATCH_SIZE};
 let untilId = {json.dumps(initial_until_id)};
 let medias  = {json.dumps(initial_media)};
-const viewer      = document.getElementById(\"viewer\");
-const snippetArea = document.getElementById(\"snippet-area\");
+const viewer = document.getElementById(\"viewer\");
 let idx = 0;
 
 function render() {{
@@ -113,7 +107,15 @@ function render() {{
     el.src = item.url;
   }}
   viewer.appendChild(el);
-  snippetArea.textContent = item.text;
+  if (item.type.startsWith(\"video\")) {{
+    const link = document.createElement(\"a\");
+    link.href = item.url;
+    link.textContent = item.url;
+    link.target = \"_blank\";
+    link.rel = \"noopener noreferrer\";
+    link.style.display = \"block\";
+    viewer.appendChild(link);
+  }}
 }}
 
 async function loadMore() {{
@@ -123,9 +125,7 @@ async function loadMore() {{
   const notes = await res.json(); if (!notes.length) return;
   untilId = notes[notes.length-1].id;
   notes.forEach(note => {{
-    const raw = note.text || note.renote?.text || "";
-    const sn = raw.split("\\n").slice(0,3).join("\n");
-    note.files.forEach(f => {{ if (f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{ url:f.url, type:f.type, text:sn }}); }});
+    note.files.forEach(f => {{ if (f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{ url:f.url, type:f.type }}); }});
   }});
 }}
 
@@ -150,5 +150,6 @@ components.html(
     height=800,
     scrolling=False
 )
+
 
 
