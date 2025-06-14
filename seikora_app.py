@@ -15,7 +15,7 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey メディアビューア")
 
-# ── API トークン取得（環境変数 → st.secrets → 手入力）─────────────────
+# ── API トークン取得（環境変数 → st.secrets → 手入力フォールバック）─────────────────
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
 if not API_TOKEN:
     API_TOKEN = st.text_input(
@@ -74,7 +74,7 @@ else:
     notes = fetch_batch(API_TOKEN, BATCH_SIZE)
     api_url = LOCAL_API_URL
 
-# ── メディアリスト生成（name フィールド追加, オリジナル＋リノート） ─────────────────────────
+# ── メディアリスト生成（name フィールド追加） ─────────────────────────
 initial_media = []
 for note in notes:
     for f in note.get("files", []):
@@ -97,7 +97,8 @@ initial_until_id = notes[-1].get("id") if notes else None
 
 # ── HTML/JS ビューア埋め込み ─────────────────────────
 html_code = f"""
-<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
+<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;\
+background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;\"></div>
 <script>
 const apiUrl    = \"{api_url}\";
 const token     = \"{API_TOKEN}\";
