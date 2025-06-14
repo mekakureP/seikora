@@ -99,10 +99,9 @@ let medias      = {json.dumps(initial_media)};
 const container = document.getElementById(\"viewer\");
 let idx = 0;
 
-function makeElement(item) {{
-  if (item.type.startsWith(\"video\")) {{
+function makeElement(item) {{{{
+  if (item.type.startsWith(\"video\")) {{{{
     const v = document.createElement(\"video\");
-    v.src               = item.url;
     v.controls          = true;
     v.autoplay          = true;
     v.loop              = true;
@@ -116,8 +115,15 @@ function makeElement(item) {{
     v.style.maxHeight   = \"100%\";
     v.style.objectFit   = \"contain\";
     v.style.display     = \"none\";
+    const source = document.createElement(\"source\");
+    source.src          = item.url;
+    source.type         = item.type;
+    v.appendChild(source);
+    v.addEventListener(\"loadedmetadata\", () => {{{{
+      v.play().catch(() => {{}});
+    }}}});
     return v;
-  }} else {{
+  }}}} else {{{{
     const img = document.createElement(\"img\");
     img.src             = item.url;
     img.style.maxWidth  = \"100%\";
@@ -125,52 +131,68 @@ function makeElement(item) {{
     img.style.objectFit = \"contain\";
     img.style.display   = \"none\";
     return img;
-  }}
-}}
+  }}}}
+}}}}
 
-function renderAll() {{ container.innerHTML = \"\"; medias.forEach(item => container.appendChild(makeElement(item))); }}
-function showIdx() {{ Array.from(container.children).forEach((el,i) => el.style.display = i===idx?\"block\":\"none\"); }}
+function renderAll() {{{{
+  container.innerHTML = \"\";
+  medias.forEach(item => container.appendChild(makeElement(item)));
+}}}}
 
-async function loadMore() {{
-  const payload = {{ i: token, limit: batchSize }};
+function showIdx() {{{{
+  Array.from(container.children).forEach((el,i) => el.style.display = i===idx?\"block\":\"none\");
+}}}}
+
+async function loadMore() {{{{
+  const payload = {{{{ i: token, limit: batchSize }}}};
   if (untilId) payload.untilId = untilId;
-  const res = await fetch(apiUrl, {{ method:\"POST\", headers:{{\"Content-Type\":\"application/json\"}}, body:JSON.stringify(payload) }});
+  const res = await fetch(apiUrl, {{{{
+    method: \"POST\",
+    headers: {{{{\"Content-Type\":\"application/json\"}}}},
+    body: JSON.stringify(payload)
+  }}}});
   const notes = await res.json(); if (!notes.length) return;
   untilId = notes[notes.length-1].id;
-  notes.forEach(note => {{
-    note.files.forEach(f => {{ if(f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{url:f.url,type:f.type}}); }});
-    if(note.renote) note.renote.files.forEach(f => {{ if(f.type.startsWith(\"image\")||f.type.startsWith(\"video\")) medias.push({{url:f.url,type:f.type}}); }});
-  }});
+  notes.forEach(note => {{{{
+    note.files.forEach(f => {{{{
+      if (f.type.startsWith(\"image\") || f.type.startsWith(\"video\")) medias.push({{{{url:f.url,type:f.type}}}});
+    }}}});
+    if (note.renote) {{{{
+      note.renote.files.forEach(f => {{{{
+        if (f.type.startsWith(\"image\") || f.type.startsWith(\"video\")) medias.push({{{{url:f.url,type:f.type}}}});
+      }}}});
+    }}}}
+  }}}};
   renderAll();
-}}
+}}}}
 
 // 初期描画
-renderAll(); showIdx(); let startX=0;
-
-// 1. スワイプ操作
-container.addEventListener(\"touchstart\", e => {{ startX = e.changedTouches[0].screenX; }});
-container.addEventListener(\"touchend\", async e => {{
+renderAll();
+showIdx();
+let startX = 0;
+container.addEventListener(\"touchstart\", e => {{{{ startX = e.changedTouches[0].screenX; }}}});
+container.addEventListener(\"touchend\", async e => {{{{
   const diff = e.changedTouches[0].screenX - startX;
-  if (Math.abs(diff) > 50) {{
+  if (Math.abs(diff) > 50) {{{{
     idx = (idx + (diff < 0 ? 1 : -1) + medias.length) % medias.length;
     showIdx();
     if (idx === medias.length - 1) await loadMore();
-  }}
-}});
+  }}}}
+}}}});
 
-// 2. ダブルタップ（ダブルクリック）操作
-container.addEventListener(\"dblclick\", e => {{
+// ダブルタップ操作
+container.addEventListener(\"dblclick\", e => {{{{
   const x = e.clientX;
   const w = window.innerWidth;
   const children = container.children;
   children[idx].style.display = \"none\";
-  if (x < w / 2) {{
+  if (x < w / 2) {{{{
     idx = (idx - 1 + children.length) % children.length;
-  }} else {{
+  }}}} else {{{{
     idx = (idx + 1) % children.length;
-  }}
+  }}}}
   children[idx].style.display = \"block\";
-}});
+}}}});
 </script>
 """
 
