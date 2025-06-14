@@ -98,7 +98,7 @@ html_code = f"""
   #viewer img, #viewer video {{ width:100%; height:auto; }}
   #snippet-area {{ padding:8px; max-height:30vh; overflow:auto; color:#000; font-size:14px; background:#fff; }}
 </style>
-<div id=\"viewer\" style=\"position:fixed;top:0;left:0;width:100vw;height:auto;background:#000;overflow:hidden;touch-action:pan-y;\"></div>
+<div id="viewer" style="width:100%;background:#000;overflow:hidden;touch-action:pan-y;"></div>
 <div id=\"snippet-area\"></div>
 <script>
 const apiUrl = \"{api_url}\";
