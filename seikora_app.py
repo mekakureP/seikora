@@ -15,10 +15,6 @@ BATCH_SIZE       = 60
 
 st.title("📸 Misskey メディアビューア")
 
-# ── テスト用動画埋め込み ─────────────────────────
-# notes/show で返ってきた URL をそのまま指定
-test_url = "https://file.seikora.one/73845b07-19e6-4de4-a433-42446bd4afc8.mp4"
-st.video(test_url)
 
 # ── API トークン取得（環境変数 → st.secrets → 手入力）─────────────────
 API_TOKEN = os.getenv("MISSKEY_API_TOKEN") or st.secrets.get("MISSKEY_API_TOKEN")
