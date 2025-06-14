@@ -172,7 +172,7 @@ container.addEventListener("dblclick", e => {
     initial_media=json.dumps(initial_media)
 )
 
-components.html(html_code, height=800, scrolling=False)(html_code, height=800, scrolling=False)
+components.html(html_code, height=800, scrolling=False)
 
 
 
